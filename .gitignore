@@ -1,0 +1,14 @@
+build/
+build-*/
+out/
+.vs/
+.vscode/
+.idea/
+.cache/
+CMakeUserPresets.json
+*.iclr
+desync_*.bin
+compile_commands.json
+*.swp
+*.swo
+.DS_Store

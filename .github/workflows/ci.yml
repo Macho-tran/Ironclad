@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.cxx }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cxx: g++
+            cc: gcc
+          - os: ubuntu-latest
+            cxx: clang++
+            cc: clang
+          - os: macos-latest
+            cxx: clang++
+            cc: clang
+          - os: windows-latest
+            cxx: cl
+            cc: cl
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        env:
+          CXX: ${{ matrix.cxx }}
+          CC:  ${{ matrix.cc }}
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Unit tests
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure -LE soak
+
+      - name: Soak smoke (60s)
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure -L soak --timeout 180
+
+  asan:
+    name: ubuntu / gcc / asan+ubsan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DIRONCLAD_SANITIZE=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Tests under sanitizers
+        run: ctest --test-dir build --output-on-failure -LE soak
