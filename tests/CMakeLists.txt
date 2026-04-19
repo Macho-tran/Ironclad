@@ -20,3 +20,7 @@ target_link_libraries(test_smoke PRIVATE ironclad ironclad_doctest)
 ironclad_apply_warnings(test_smoke)
 add_test(NAME test_smoke COMMAND test_smoke)
 set_tests_properties(test_smoke PROPERTIES TIMEOUT 30 LABELS "unit")
+
+# Subsystem unit tests, registered via the helper.
+ironclad_add_test(test_fixed)
+ironclad_add_test(test_vec2)
