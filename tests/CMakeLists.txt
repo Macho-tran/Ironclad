@@ -24,3 +24,4 @@ set_tests_properties(test_smoke PROPERTIES TIMEOUT 30 LABELS "unit")
 # Subsystem unit tests, registered via the helper.
 ironclad_add_test(test_fixed)
 ironclad_add_test(test_vec2)
+ironclad_add_test(test_rng)
