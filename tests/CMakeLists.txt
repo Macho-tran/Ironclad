@@ -35,3 +35,18 @@ ironclad_add_test(test_session_rollback)
 ironclad_add_test(test_lag_comp)
 ironclad_add_test(test_recorder)
 ironclad_add_test(test_desync)
+
+# Soak smoke: 60s, 4 AI clients, simulated 150ms RTT / 5% loss / 30ms
+# jitter / 2% reorder. Asserts 0 desyncs + bounded rollback + bandwidth
+# under the KPI cap. Tagged "soak" so CI can run it as a separate step.
+add_executable(test_soak_smoke
+    test_soak_smoke.cpp
+    doctest_main.cpp
+    ../apps/arena_demo/arena.cpp)
+target_link_libraries(test_soak_smoke PRIVATE ironclad ironclad_doctest)
+target_include_directories(test_soak_smoke PRIVATE ${CMAKE_SOURCE_DIR})
+ironclad_apply_warnings(test_soak_smoke)
+add_test(NAME test_soak_smoke COMMAND test_soak_smoke)
+set_tests_properties(test_soak_smoke PROPERTIES
+    TIMEOUT 180
+    LABELS  "soak")

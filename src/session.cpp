@@ -50,13 +50,18 @@ Session::Session(SessionConfig    config,
 void Session::tick(PlayerInput local_input) {
     transport_->poll();
 
-    // 1) Record the local input for this frame *before* any rollback,
-    //    so a replay always sees the same local input it originally
-    //    saw.
-    inputs_[config_.local_player][input_idx(frame_)]      = local_input;
-    input_valid_[config_.local_player][input_idx(frame_)] = 1;
+    // 1) Record the local input for the *future* frame `frame_ + delay`.
+    //    This is the input-delay trick: pressing a button now causes
+    //    the action to occur `delay` ticks from now, which gives every
+    //    remote peer that many ticks of grace before they have to
+    //    predict our input. Smaller average rollback at the cost of
+    //    a few ms of perceived input lag (default 2 ticks ≈ 33 ms).
+    const std::uint32_t apply_at =
+        frame_ + static_cast<std::uint32_t>(config_.local_input_delay);
+    inputs_[config_.local_player][input_idx(apply_at)]      = local_input;
+    input_valid_[config_.local_player][input_idx(apply_at)] = 1;
     last_known_input_frame_[config_.local_player] =
-        std::max(last_known_input_frame_[config_.local_player], frame_);
+        std::max(last_known_input_frame_[config_.local_player], apply_at);
 
     // 2) Drain transport: process remote input packets, possibly
     //    triggering rollback.
@@ -89,13 +94,24 @@ void Session::step_one(std::uint32_t frame) {
 
 PlayerInput Session::input_for_step(std::uint8_t player,
                                     std::uint32_t frame) const {
+    // First choice: an authoritative input recorded for exactly this
+    // frame.
     if (input_valid_[player][input_idx(frame)] != 0u) {
         return inputs_[player][input_idx(frame)];
     }
-    // Predict: repeat the last known input for this player.
-    std::uint32_t last_frame = last_known_input_frame_[player];
-    if (input_valid_[player][input_idx(last_frame)] != 0u) {
-        return inputs_[player][input_idx(last_frame)];
+    // Otherwise: predict by repeating the most recent valid input
+    // *at or before* `frame`. Walking the ring backward is cheap
+    // (typically 1-2 steps) and keeps us from accidentally using a
+    // future input as the predicted past — a subtle bug that would
+    // both defeat the local input-delay trick and inflate average
+    // rollback distance for remote peers.
+    if (frame == 0) return PlayerInput{};
+    const std::uint32_t window = std::min<std::uint32_t>(kInputRing, frame);
+    for (std::uint32_t back = 1; back <= window; ++back) {
+        const std::uint32_t f = frame - back;
+        if (input_valid_[player][input_idx(f)] != 0u) {
+            return inputs_[player][input_idx(f)];
+        }
     }
     return PlayerInput{};
 }

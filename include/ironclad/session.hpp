@@ -56,6 +56,12 @@ struct SessionConfig {
     std::uint64_t seed              = 0xC0FFEE'CAFE'D00DULL;
     /// World capacity in entities.
     std::uint32_t world_capacity    = 256;
+    /// Local input delay in *ticks*. The local player's input pressed
+    /// at tick T is applied to the simulation at tick T + delay. This
+    /// is the classic rollback technique for trading a tiny bit of
+    /// felt input latency for dramatically smaller average rollback
+    /// distance. Typical values: 1..3.
+    std::uint8_t  local_input_delay = 2;
 };
 
 /// Per-tick stats exposed to the diegetic overlay.
