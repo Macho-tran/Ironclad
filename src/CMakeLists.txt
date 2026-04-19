@@ -4,6 +4,7 @@ add_library(ironclad STATIC
     hash.cpp
     delta.cpp
     range_coder.cpp
+    session.cpp
 )
 
 target_include_directories(ironclad
