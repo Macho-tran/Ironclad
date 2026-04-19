@@ -35,18 +35,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure
         env:
           CXX: ${{ matrix.cxx }}
           CC:  ${{ matrix.cc }}
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build
         run: cmake --build build --config RelWithDebInfo --parallel
