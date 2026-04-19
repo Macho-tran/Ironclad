@@ -5,6 +5,7 @@ add_library(ironclad STATIC
     delta.cpp
     range_coder.cpp
     session.cpp
+    recorder.cpp
 )
 
 target_include_directories(ironclad
