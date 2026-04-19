@@ -6,6 +6,7 @@ add_library(ironclad STATIC
     range_coder.cpp
     session.cpp
     recorder.cpp
+    desync.cpp
 )
 
 target_include_directories(ironclad
