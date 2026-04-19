@@ -1,6 +1,7 @@
 # Public headers live in include/ironclad ; we only list .cpp here.
 add_library(ironclad STATIC
     placeholder.cpp
+    hash.cpp
 )
 
 target_include_directories(ironclad
