@@ -29,18 +29,26 @@ jobs:
           - os: macos-latest
             cxx: clang++
             cc: clang
-        # MSVC is intentionally not in the matrix yet: the simulation
-        # core uses __int128 for overflow-safe Q32.32 multiply/divide,
-        # and an MSVC port using the _mul128/_div128 intrinsics is a
-        # documented follow-up. Add Windows back here once that lands.
+          # MSVC: uses _mul128/_div128 intrinsics in fixed.hpp instead
+          # of the __int128 extension. Validates the Windows port and
+          # cross-compiler determinism (the cross-platform replay
+          # check below catches any drift).
+          - os: windows-latest
+            cxx: cl
+            cc: cl
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
         env:
           CXX: ${{ matrix.cxx }}
           CC:  ${{ matrix.cc }}
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DIRONCLAD_USE_IMGUI=OFF
 
       - name: Build
         run: cmake --build build --config RelWithDebInfo --parallel

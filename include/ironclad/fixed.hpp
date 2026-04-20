@@ -26,20 +26,66 @@
 #include <limits>
 #include <type_traits>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#  include <intrin.h>
+#  define IRONCLAD_USE_MSVC_INT128 1
+#else
+#  define IRONCLAD_USE_MSVC_INT128 0
+#endif
+
 namespace ironclad {
 
-// 128-bit signed integer used internally for overflow-free multiply/divide.
-// MSVC has its own intrinsics but we don't target MSVC for the sim core in
-// this slice; if/when we do, define `IRONCLAD_HAS_INT128 0` and add the
-// MSVC `_mul128`/`_div128` paths.
+// We need 128-bit integer multiply+shift and shift+divide for the
+// Q32.32 multiply and divide operations. Two backends:
 //
-// `__int128` is a non-standard GCC/Clang extension and `-Wpedantic` flags
-// every use of it. The `__extension__` keyword silences the warning *at
-// the point of declaration / cast*, but only on GCC/Clang -- which is
-// exactly the toolchain that needs it. The macro indirection lets every
-// use site stay readable.
-#if defined(__SIZEOF_INT128__)
-#  define IRONCLAD_HAS_INT128 1
+//   * GCC/Clang: native `__int128`. Suppress `-Wpedantic` on the
+//     typedefs because the extension is "standard" everywhere we
+//     ship but the language standard doesn't bless it.
+//
+//   * MSVC: the `_mul128`/`_div128` intrinsics in <intrin.h>. They
+//     return signed-128 results in a (lo, hi) pair, which matches
+//     what we need for `(a*b) >> 32` and `(a << 32) / b`.
+//
+// The public `Fixed` API is identical on both backends. Helpers
+// below isolate the 128-bit arithmetic so the rest of the class
+// stays toolchain-agnostic.
+#if IRONCLAD_USE_MSVC_INT128
+
+namespace detail {
+
+/// Returns (a * b) >> shift, treating a and b as signed 64-bit and
+/// the intermediate as signed 128-bit. `shift` must be in [0, 63].
+inline std::int64_t mul_shift_64(std::int64_t a, std::int64_t b,
+                                 unsigned shift) noexcept {
+    std::int64_t hi;
+    std::int64_t lo = _mul128(a, b, &hi);
+    // Combine (hi, lo) >> shift into a single int64. We assume the
+    // result fits in 64 bits (callers guarantee this for valid Q32.32
+    // values).
+    if (shift == 0) return lo;
+    // Build the lower 64 bits of the shifted value:
+    //   shifted_lo = (lo >> shift) | (hi << (64 - shift))
+    std::uint64_t ulo  = static_cast<std::uint64_t>(lo);
+    std::uint64_t uhi  = static_cast<std::uint64_t>(hi);
+    std::uint64_t out  = (ulo >> shift) | (uhi << (64 - shift));
+    return static_cast<std::int64_t>(out);
+}
+
+/// Returns (a << shift) / b. `shift` must be in [0, 63]; b != 0.
+inline std::int64_t shift_div_64(std::int64_t a, std::int64_t b,
+                                 unsigned shift) noexcept {
+    // Build (hi, lo) = a << shift in 128 bits.
+    std::uint64_t ua = static_cast<std::uint64_t>(a);
+    std::uint64_t lo = ua << shift;
+    std::int64_t  hi = a >> (64 - shift);     // arithmetic shift preserves sign
+    std::int64_t  rem;
+    return _div128(hi, static_cast<std::int64_t>(lo), b, &rem);
+}
+
+}  // namespace detail
+
+#else  // GCC / Clang path
+
 #  if defined(__GNUC__) || defined(__clang__)
 #    pragma GCC diagnostic push
 #    pragma GCC diagnostic ignored "-Wpedantic"
@@ -50,8 +96,22 @@ typedef unsigned __int128   ironclad_u128;
 typedef __int128            ironclad_i128;
 typedef unsigned __int128   ironclad_u128;
 #  endif
-#else
-#  error "ironclad currently requires a compiler with __int128 support"
+
+namespace detail {
+
+inline constexpr std::int64_t mul_shift_64(std::int64_t a, std::int64_t b,
+                                           unsigned shift) noexcept {
+    return static_cast<std::int64_t>(
+        (static_cast<ironclad_i128>(a) * static_cast<ironclad_i128>(b)) >> shift);
+}
+inline constexpr std::int64_t shift_div_64(std::int64_t a, std::int64_t b,
+                                           unsigned shift) noexcept {
+    return static_cast<std::int64_t>(
+        (static_cast<ironclad_i128>(a) << shift) / b);
+}
+
+}  // namespace detail
+
 #endif
 
 class Fixed {
@@ -73,12 +133,12 @@ public:
         : raw_(static_cast<Raw>(v) << kFractionBits) {}
 
     /// Construct from a rational `num / den`.  `den` must be > 0.
-    static constexpr Fixed from_ratio(std::int64_t num,
-                                      std::int64_t den) noexcept {
-        // Promote to 128 bits to keep precision, then divide.
-        ironclad_i128 n = static_cast<ironclad_i128>(num) << kFractionBits;
-        ironclad_i128 d = den;
-        return Fixed::from_raw(static_cast<Raw>(n / d));
+    /// (Not `constexpr` because the MSVC backend uses non-constexpr
+    /// intrinsics; the GCC/Clang path could be constexpr but we keep
+    /// the API uniform across toolchains.)
+    static Fixed from_ratio(std::int64_t num,
+                            std::int64_t den) noexcept {
+        return Fixed::from_raw(detail::shift_div_64(num, den, kFractionBits));
     }
 
     /// Construct directly from the raw 64-bit representation.  Used by
@@ -124,13 +184,10 @@ public:
     friend constexpr Fixed operator-(Fixed a, Fixed b) noexcept {
         return Fixed::from_raw(a.raw_ - b.raw_);
     }
-    friend constexpr Fixed operator*(Fixed a, Fixed b) noexcept {
-        // (a * b) >> 32, in 128-bit precision.
-        ironclad_i128 prod = static_cast<ironclad_i128>(a.raw_) *
-                             static_cast<ironclad_i128>(b.raw_);
-        return Fixed::from_raw(static_cast<Raw>(prod >> kFractionBits));
+    friend Fixed operator*(Fixed a, Fixed b) noexcept {
+        return Fixed::from_raw(detail::mul_shift_64(a.raw_, b.raw_, kFractionBits));
     }
-    friend constexpr Fixed operator/(Fixed a, Fixed b) noexcept {
+    friend Fixed operator/(Fixed a, Fixed b) noexcept {
         if (b.raw_ == 0) {
             // Defined-deterministic: 0/0 -> 0, x/0 -> sign(x) * MAX.
             if (a.raw_ == 0) return Fixed{};
@@ -138,8 +195,7 @@ public:
                                        ? std::numeric_limits<Raw>::max()
                                        : std::numeric_limits<Raw>::min());
         }
-        ironclad_i128 num = static_cast<ironclad_i128>(a.raw_) << kFractionBits;
-        return Fixed::from_raw(static_cast<Raw>(num / b.raw_));
+        return Fixed::from_raw(detail::shift_div_64(a.raw_, b.raw_, kFractionBits));
     }
 
     Fixed& operator+=(Fixed b) noexcept { *this = *this + b; return *this; }
@@ -184,7 +240,8 @@ private:
     Raw raw_;
 };
 
-// Convenient literal-style constants.
+// Convenient literal-style constants. (Cannot use `Fixed::from_ratio`
+// here because the MSVC backend's intrinsic isn't constexpr.)
 inline constexpr Fixed kZero    = Fixed{};
 inline constexpr Fixed kOneFx   = Fixed{1};
 inline constexpr Fixed kHalf    = Fixed::from_raw(Fixed::kOne >> 1);
