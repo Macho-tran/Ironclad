@@ -62,3 +62,48 @@ jobs:
         run: cmake --build build --parallel
       - name: Tests under sanitizers
         run: ctest --test-dir build --output-on-failure -LE soak
+
+  # Generate a fresh sample replay + studio screenshots and upload
+  # them as workflow artifacts. Lets reviewers (and the README) link
+  # to the latest visualization without committing binaries.
+  artifacts:
+    name: replay sample + screenshots
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev imagemagick
+      - name: Configure
+        run: cmake -S . -B build -DIRONCLAD_BUILD_SDL_DEMO=ON -DIRONCLAD_USE_IMGUI=OFF
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Generate sample.iclr
+        run: ./scripts/make-sample.sh
+      - name: Studio screenshots (offscreen SDL)
+        env:
+          SDL_VIDEODRIVER: offscreen
+        run: |
+          mkdir -p artifacts
+          for FRAME in 50 200 900 1500; do
+            ./build/apps/arena_view/arena_view \
+              --replay samples/sample.iclr \
+              --screenshot artifacts/studio_frame_${FRAME}.bmp \
+              --frame ${FRAME}
+            convert artifacts/studio_frame_${FRAME}.bmp \
+                    artifacts/studio_frame_${FRAME}.png
+            rm artifacts/studio_frame_${FRAME}.bmp
+          done
+      - name: Replay info text
+        run: |
+          ./build/apps/arena_demo/arena_demo --replay-info samples/sample.iclr \
+              | tee artifacts/sample.info.txt
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ironclad-replay-studio
+          path: |
+            samples/sample.iclr
+            artifacts/*
