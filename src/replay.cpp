@@ -64,11 +64,24 @@ void compute_stats_and_events(const std::vector<ReplayRecord>& records,
 std::optional<ReplayModel>
 ReplayModel::load(std::span<const std::uint8_t> bytes) {
     ReplayModel m;
-    if (!parse_replay(bytes, m.hdr_, m.records_, m.final_hash_)) {
+    if (!parse_replay(bytes, m.hdr_, m.records_, m.lag_events_, m.final_hash_)) {
         return std::nullopt;
     }
     compute_stats_and_events(m.records_, m.stats_, m.events_);
     return m;
+}
+
+const LagEvent* ReplayModel::nearest_lag_event(std::uint32_t frame,
+                                               std::uint32_t window) const noexcept {
+    const LagEvent* best = nullptr;
+    std::uint32_t   best_d = window + 1;
+    for (const auto& ev : lag_events_) {
+        const std::uint32_t d = ev.frame > frame
+            ? ev.frame - frame
+            : frame - ev.frame;
+        if (d < best_d) { best = &ev; best_d = d; }
+    }
+    return best;
 }
 
 std::optional<ReplayModel>

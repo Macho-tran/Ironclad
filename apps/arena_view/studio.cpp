@@ -2,6 +2,7 @@
 #include "studio.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 #include <ironclad/components.hpp>
@@ -73,6 +74,18 @@ void Studio::handle_event(const SDL_Event& ev) {
                 if (i < model_.events().size()) {
                     seek(model_.events()[i].frame);
                 }
+                break;
+            }
+            case SDLK_l: {
+                // Jump to the next lag-comp event after the playhead,
+                // wrapping to the first if we're past the last.
+                const auto& levs = model_.lag_events();
+                if (levs.empty()) break;
+                std::uint32_t target = levs.front().frame;
+                for (const auto& lev : levs) {
+                    if (lev.frame > playhead_) { target = lev.frame; break; }
+                }
+                seek(target);
                 break;
             }
             default: break;
@@ -180,6 +193,20 @@ void Studio::render_top_bar(SDL_Renderer* r) {
         set_color(r, kRed);
         draw_text(r, row2_x, 42, "DESYNC", 2);
     }
+    // Lag-comp banner when scrubbed near an event.
+    const auto* lag = model_.nearest_lag_event(playhead_, 8);
+    if (lag) {
+        set_color(r, kWhite);
+        char lbuf[64];
+        std::snprintf(lbuf, sizeof(lbuf),
+                      "LAG-COMP REWIND %u T  P%u %s P%u",
+                      static_cast<unsigned>(lag->rewound_ticks),
+                      static_cast<unsigned>(lag->attacker_id),
+                      lag->target_id == 0xFFu ? "MISS" : "HIT",
+                      lag->target_id == 0xFFu ? 0 :
+                          static_cast<unsigned>(lag->target_id));
+        draw_text(r, layout_.arena_x + 540, 42, lbuf, 2);
+    }
 }
 
 void Studio::render_arena(SDL_Renderer* r) {
@@ -188,14 +215,50 @@ void Studio::render_arena(SDL_Renderer* r) {
     stroke_rect(r, layout_.arena_x - 1, layout_.arena_y - 1,
                 arena_w_ + 2, arena_h_ + 2);
 
-    // Update layout in renderer for sim_to_px helpers.
     Layout L = layout_;
-
-    // Re-simulate (or use cached) world for the playhead.
     const std::uint32_t want = std::min<std::uint32_t>(playhead_, model_.record_count());
     const ironclad::World& w = replayer_.world_at(want);
 
-    // Players.
+    // Lag-comp ghost: if there's a lag event within +/- 8 frames of
+    // the current playhead, draw the rewound positions of every
+    // player that the attacker rewound through. Drawn under the
+    // live circles so the live state stays prominent.
+    const ironclad::LagEvent* lag = model_.nearest_lag_event(want, 8);
+    if (lag) {
+        const std::uint32_t rewind_to =
+            (lag->frame > lag->rewound_ticks)
+                ? (lag->frame - lag->rewound_ticks) : 0;
+        const ironclad::World& rw = replayer_.world_at(rewind_to);
+        // Draw ghost circles in dim white; the attacker's ray gets
+        // a brighter outline.
+        rw.each<ironclad::Player>([&](ironclad::Entity e, const ironclad::Player& pl) {
+            auto* tr = rw.get<ironclad::Transform>(e);
+            if (!tr) return;
+            const int cx = L.sim_to_px_x(tr->pos.x.to_double());
+            const int cy = L.sim_to_px_y(tr->pos.y.to_double());
+            const Uint8 alpha = (pl.id == lag->target_id) ? 220 : 96;
+            SDL_SetRenderDrawColor(r, 255, 255, 255, alpha);
+            draw_circle(r, cx, cy, 16);
+        });
+        // The hit-scan ray from rewound-attacker pos.
+        const int ox = L.sim_to_px_x(lag->origin.x.to_double());
+        const int oy = L.sim_to_px_y(lag->origin.y.to_double());
+        const double dlen = std::sqrt(
+            lag->dir.x.to_double() * lag->dir.x.to_double() +
+            lag->dir.y.to_double() * lag->dir.y.to_double());
+        const double nx = dlen > 0 ? lag->dir.x.to_double() / dlen : 1.0;
+        const double ny = dlen > 0 ? lag->dir.y.to_double() / dlen : 0.0;
+        const int rx = ox + static_cast<int>(nx * lag->range.to_double() *
+                                             L.arena_px / L.sim_range);
+        const int ry = oy - static_cast<int>(ny * lag->range.to_double() *
+                                             L.arena_px / L.sim_range);
+        SDL_SetRenderDrawColor(r, 255, 255, 255, 200);
+        SDL_RenderDrawLine(r, ox, oy, rx, ry);
+        // Re-load the playhead world for the live render below.
+        (void)replayer_.world_at(want);
+    }
+
+    // Players (live at playhead).
     w.each<ironclad::Player>([&](ironclad::Entity e, const ironclad::Player& pl) {
         auto* tr = w.get<ironclad::Transform>(e);
         if (!tr) return;

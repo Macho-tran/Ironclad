@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <ironclad/byteio.hpp>
+#include <ironclad/lag_comp.hpp>
 #include <ironclad/recorder.hpp>
 
 namespace arena_demo {
@@ -174,7 +175,14 @@ Result run(const Options& opts) {
         std::uint8_t             pred_diff = 0;
     };
     std::vector<RecCapture> rec_captures;
+    std::vector<LagEvent>   rec_lag_events;
     if (opts.record_path) rec_captures.reserve(opts.frames);
+
+    // A lag-comp circular buffer, populated each tick from session 0's
+    // world. We use this to perform lag-compensated hit-scans whenever
+    // a player presses attack, and record the event for the Replay
+    // Studio's ghost-hitbox visualization.
+    LagBuffer lag_buf(64);
 
     std::uint64_t last_print_tick = 0;
     // Track previous-tick rollback totals per session so we can compute
@@ -219,6 +227,58 @@ Result run(const Options& opts) {
             sessions[p]->tick(canonical[p]);
         }
         hub.advance_tick();
+
+        // Capture this frame's player positions into the lag buffer
+        // so any subsequent attack can be rewound against them.
+        if (opts.record_path) {
+            std::vector<LagSample> samples;
+            samples.reserve(opts.num_players);
+            sessions[0]->world().each<Player>(
+                [&](Entity e, const Player& pl) {
+                    auto* tr = sessions[0]->world().get<Transform>(e);
+                    auto* hb = sessions[0]->world().get<Hitbox>(e);
+                    if (tr && hb && pl.alive) {
+                        samples.push_back(LagSample{
+                            static_cast<std::uint32_t>(pl.id),
+                            tr->pos, hb->radius});
+                    }
+                });
+            lag_buf.record(f, std::move(samples));
+
+            // Process each canonical attack input as a lag-compensated
+            // hit-scan against frame f - half_rtt (we use the netsim
+            // RTT in ticks as a stand-in). Records the event regardless
+            // of hit / miss so the studio can show the rewound shot.
+            const std::uint16_t half_rtt =
+                static_cast<std::uint16_t>(nc.latency_ticks);
+            for (std::uint8_t p = 0; p < opts.num_players; ++p) {
+                if (!canonical[p].attack()) continue;
+                Entity attacker = kInvalidEntity;
+                sessions[0]->world().each<Player>(
+                    [&](Entity e, const Player& pl) {
+                        if (pl.id == p) attacker = e;
+                    });
+                if (attacker == kInvalidEntity) continue;
+                auto* tr = sessions[0]->world().get<Transform>(attacker);
+                if (!tr) continue;
+                Vec2 dir{Fixed{1}, Fixed{0}};
+                Vec2 mv{canonical[p].move_x_fx(), canonical[p].move_y_fx()};
+                if (mv.length_sq() != kZero) dir = mv;
+                const Fixed range{8};
+                auto hit_id = lag_buf.hitscan(tr->pos, dir, range,
+                                              f, half_rtt * 2u);
+                LagEvent ev;
+                ev.frame         = f;
+                ev.attacker_id   = p;
+                ev.target_id     = hit_id ? static_cast<std::uint8_t>(*hit_id)
+                                          : 0xFFu;
+                ev.rewound_ticks = half_rtt;
+                ev.origin        = tr->pos;
+                ev.dir           = dir;
+                ev.range         = range;
+                rec_lag_events.push_back(ev);
+            }
+        }
 
         // Recorder needs the inputs the simulation actually consumed
         // at this frame, NOT the canonical AI inputs. With non-zero
@@ -307,6 +367,8 @@ Result run(const Options& opts) {
             rec.record_v2(static_cast<std::uint32_t>(i), c.inputs,
                           final_hash, c.rollback, c.flags, c.pred_diff);
         }
+        // Append all lag-comp events captured during the live run.
+        for (const auto& ev : rec_lag_events) rec.record_lag_event(ev);
         auto bytes = rec.finish(final_hash);
         std::ofstream f(opts.record_path, std::ios::binary);
         f.write(reinterpret_cast<const char*>(bytes.data()),

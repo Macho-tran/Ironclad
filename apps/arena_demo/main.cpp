@@ -2,6 +2,7 @@
 #include "arena.hpp"
 #include "arena_udp.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -48,6 +49,12 @@ int print_replay_info(const char* path) {
                 static_cast<unsigned long>(s.total_rollback_frames),
                 s.avg_rollback_frames);
     std::printf("  desync events     : %u\n", s.desync_event_count);
+    std::printf("  lag-comp events   : %zu (hits: %zu, misses: %zu)\n",
+                m->lag_events().size(),
+                std::count_if(m->lag_events().begin(), m->lag_events().end(),
+                              [](const ironclad::LagEvent& e){ return e.target_id != 0xFFu; }),
+                std::count_if(m->lag_events().begin(), m->lag_events().end(),
+                              [](const ironclad::LagEvent& e){ return e.target_id == 0xFFu; }));
     std::printf("  rollback histogram:\n");
     static const char* labels[] = {
         "  =0f", "  =1f", "  <=2f", "  <=4f", "  <=8f",

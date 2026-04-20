@@ -10,9 +10,11 @@ namespace ironclad {
 namespace {
 constexpr char        kMagicV1[]       = "IRCL_REPLAY1";   // 12 bytes incl. NUL
 constexpr char        kMagicV2[]       = "IRCL_REPLAY2";   // 12 bytes incl. NUL
+constexpr char        kMagicV3[]       = "IRCL_REPLAY3";   // 12 bytes incl. NUL
 constexpr std::size_t kMagicSize       = 12;
 constexpr char        kTrailerMagic[]  = "ENDR";
-constexpr std::uint16_t kReplayVersion = 2;
+constexpr char        kLagBlockMagic[] = "LAGE";           // before lag-event block
+constexpr std::uint16_t kReplayVersion = 3;
 }  // namespace
 
 void Recorder::begin(std::uint16_t tick_hz,
@@ -24,8 +26,10 @@ void Recorder::begin(std::uint16_t tick_hz,
     num_players_ = num_players;
     frames_      = 0;
 
+    lag_events_.clear();
+
     ByteWriter w;
-    w.write_bytes(kMagicV2, kMagicSize);
+    w.write_bytes(kMagicV3, kMagicSize);
     w.write_u16(kReplayVersion);
     w.write_u16(tick_hz);
     w.write_u8(num_players);
@@ -35,6 +39,10 @@ void Recorder::begin(std::uint16_t tick_hz,
     w.write_u32(static_cast<std::uint32_t>(initial_snapshot.size()));
     w.write_bytes(initial_snapshot.data(), initial_snapshot.size());
     out_ = std::move(w.take());
+}
+
+void Recorder::record_lag_event(const LagEvent& ev) {
+    lag_events_.push_back(ev);
 }
 
 void Recorder::record(std::uint32_t frame,
@@ -66,6 +74,21 @@ void Recorder::record_v2(std::uint32_t frame,
 
 std::vector<std::uint8_t> Recorder::finish(std::uint64_t final_hash) {
     ByteWriter w;
+    // Lag-event block (v3+).
+    w.write_bytes(kLagBlockMagic, 4);
+    w.write_u32(static_cast<std::uint32_t>(lag_events_.size()));
+    for (const auto& ev : lag_events_) {
+        w.write_u32(ev.frame);
+        w.write_u8(ev.attacker_id);
+        w.write_u8(ev.target_id);
+        w.write_u16(ev.rewound_ticks);
+        w.write_i64(ev.origin.x.raw());
+        w.write_i64(ev.origin.y.raw());
+        w.write_i64(ev.dir.x.raw());
+        w.write_i64(ev.dir.y.raw());
+        w.write_i64(ev.range.raw());
+    }
+    // Trailer.
     w.write_bytes(kTrailerMagic, 4);
     w.write_u32(frames_);
     w.write_u64(final_hash);
@@ -76,17 +99,21 @@ std::vector<std::uint8_t> Recorder::finish(std::uint64_t final_hash) {
 bool parse_replay(std::span<const std::uint8_t> bytes,
                   ReplayHeader&                 hdr,
                   std::vector<ReplayRecord>&    records,
+                  std::vector<LagEvent>&        lag_events,
                   std::uint64_t&                final_hash) {
     ByteReader r(bytes.data(), bytes.size());
     char magic[kMagicSize];
     r.read_bytes(magic, kMagicSize);
     if (r.error()) return false;
-    bool is_v2 = std::memcmp(magic, kMagicV2, kMagicSize) == 0;
-    bool is_v1 = std::memcmp(magic, kMagicV1, kMagicSize) == 0;
-    if (!is_v1 && !is_v2) return false;
+    const bool is_v3 = std::memcmp(magic, kMagicV3, kMagicSize) == 0;
+    const bool is_v2 = std::memcmp(magic, kMagicV2, kMagicSize) == 0;
+    const bool is_v1 = std::memcmp(magic, kMagicV1, kMagicSize) == 0;
+    if (!is_v1 && !is_v2 && !is_v3) return false;
 
     hdr.version = r.read_u16();
-    if ((is_v2 && hdr.version != 2) || (is_v1 && hdr.version != 1)) {
+    if ((is_v3 && hdr.version != 3) ||
+        (is_v2 && hdr.version != 2) ||
+        (is_v1 && hdr.version != 1)) {
         return false;
     }
     hdr.tick_hz       = r.read_u16();
@@ -101,13 +128,20 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
     if (r.error()) return false;
 
     records.clear();
+    lag_events.clear();
+    const bool has_event_lane = is_v2 || is_v3;
     while (true) {
-        // Peek for trailer magic.
+        // Peek for end-of-records sentinel: either "ENDR" (v1/v2)
+        // or "LAGE" (v3 lag block) or "ENDR" (v3 with no lag block).
         if (r.remaining() < 4) return false;
-        if (bytes[r.pos()]     == 'E' &&
-            bytes[r.pos() + 1] == 'N' &&
-            bytes[r.pos() + 2] == 'D' &&
-            bytes[r.pos() + 3] == 'R') break;
+        const auto p0 = bytes[r.pos()];
+        const auto p1 = bytes[r.pos() + 1];
+        const auto p2 = bytes[r.pos() + 2];
+        const auto p3 = bytes[r.pos() + 3];
+        if ((p0 == 'E' && p1 == 'N' && p2 == 'D' && p3 == 'R') ||
+            (p0 == 'L' && p1 == 'A' && p2 == 'G' && p3 == 'E')) {
+            break;
+        }
         ReplayRecord rec;
         rec.frame = r.read_u32();
         rec.inputs.resize(hdr.num_players);
@@ -115,7 +149,7 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
             rec.inputs[p] = unpack_input(r);
         }
         rec.hash = r.read_u64();
-        if (is_v2) {
+        if (has_event_lane) {
             rec.rollback  = r.read_u8();
             rec.flags     = r.read_u8();
             rec.pred_diff = r.read_u8();
@@ -123,6 +157,32 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
         if (r.error()) return false;
         records.push_back(std::move(rec));
     }
+
+    // Optional lag-event block (v3+).
+    if (is_v3 && r.remaining() >= 4 &&
+        bytes[r.pos()]     == 'L' && bytes[r.pos() + 1] == 'A' &&
+        bytes[r.pos() + 2] == 'G' && bytes[r.pos() + 3] == 'E') {
+        char lblock[4];
+        r.read_bytes(lblock, 4);
+        const std::uint32_t n = r.read_u32();
+        if (r.error()) return false;
+        lag_events.reserve(n);
+        for (std::uint32_t i = 0; i < n; ++i) {
+            LagEvent ev;
+            ev.frame         = r.read_u32();
+            ev.attacker_id   = r.read_u8();
+            ev.target_id     = r.read_u8();
+            ev.rewound_ticks = r.read_u16();
+            ev.origin.x = Fixed::from_raw(r.read_i64());
+            ev.origin.y = Fixed::from_raw(r.read_i64());
+            ev.dir.x    = Fixed::from_raw(r.read_i64());
+            ev.dir.y    = Fixed::from_raw(r.read_i64());
+            ev.range    = Fixed::from_raw(r.read_i64());
+            if (r.error()) return false;
+            lag_events.push_back(ev);
+        }
+    }
+
     char trailer[4];
     r.read_bytes(trailer, 4);
     if (r.error() || std::memcmp(trailer, kTrailerMagic, 4) != 0) return false;

@@ -81,11 +81,18 @@ public:
     [[nodiscard]] const ReplayHeader&                 header()        const noexcept { return hdr_; }
     [[nodiscard]] const std::vector<ReplayRecord>&    records()       const noexcept { return records_; }
     [[nodiscard]] const std::vector<RollbackEvent>&   events()        const noexcept { return events_; }
+    [[nodiscard]] const std::vector<LagEvent>&        lag_events()    const noexcept { return lag_events_; }
     [[nodiscard]] const ReplayStats&                  stats()         const noexcept { return stats_; }
     [[nodiscard]] std::uint64_t                       final_hash()    const noexcept { return final_hash_; }
     [[nodiscard]] std::uint32_t                       record_count()  const noexcept {
         return static_cast<std::uint32_t>(records_.size());
     }
+
+    /// Returns the lag event closest to `frame` within `window`
+    /// (in ticks), or nullptr if none found. Used by the studio
+    /// to decide when to draw rewound hitboxes.
+    [[nodiscard]] const LagEvent* nearest_lag_event(
+        std::uint32_t frame, std::uint32_t window = 12) const noexcept;
 
     /// Index of the rollback event at or after `frame`, or
     /// `events().size()` if none. Wrap to 0 if `wrap` is true.
@@ -102,6 +109,7 @@ public:
 private:
     ReplayHeader               hdr_{};
     std::vector<ReplayRecord>  records_;
+    std::vector<LagEvent>      lag_events_;
     std::uint64_t              final_hash_ = 0;
     std::vector<RollbackEvent> events_;
     ReplayStats                stats_{};

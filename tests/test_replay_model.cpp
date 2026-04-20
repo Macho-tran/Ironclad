@@ -132,7 +132,7 @@ TEST_CASE("v2 round-trip: rollback / flags / pred_diff survive parse") {
     auto bytes = make_recording(60, 3);
     auto m = ReplayModel::load({bytes.data(), bytes.size()});
     REQUIRE(m.has_value());
-    CHECK(m->header().version     == 2);
+    CHECK(m->header().version     == 3);
     CHECK(m->header().num_players == 3);
     CHECK(m->record_count()       == 60u);
 
@@ -146,59 +146,101 @@ TEST_CASE("v2 round-trip: rollback / flags / pred_diff survive parse") {
 }
 
 TEST_CASE("v1 magic file still parses (rollback lane = 0)") {
-    // Take a v2 recording and rewrite the magic to v1, plus version
-    // byte, plus strip the trailing 3 bytes off every record. We
-    // reuse the recorder to *generate* a v2 record, then transform
-    // it into v1 manually.
-    auto v2 = make_recording(8, 2, 0xDEAD'BEEFULL, /*inject_events=*/false);
-    // Rewrite header magic to "IRCL_REPLAY1" and version=1.
-    std::memcpy(v2.data(), "IRCL_REPLAY1", 12);
-    v2[12] = 1;     // version low byte
-    v2[13] = 0;     // version high byte
-
-    // Strip the v2-only trailing 3 bytes from every record. Header
-    // size: 12 magic + 2 ver + 2 hz + 1 nplayers + 1 reserved + 8
-    // seed + 4 cap + 4 init_size + init bytes. Then records, then
-    // 4 + 4 + 8 trailer.
-    ByteReader r(v2.data(), v2.size());
-    r.read_bytes(nullptr, 0);   // no-op; advance below
-    // Walk the header bytes to find the per-record region start.
-    std::size_t hdr_end = 12 + 2 + 2 + 1 + 1 + 8 + 4 + 4;
-    // init_size is at offset 12+2+2+1+1+8+4 = 30
-    std::uint32_t init_size = static_cast<std::uint32_t>(v2[30]) |
-                              (static_cast<std::uint32_t>(v2[31]) << 8) |
-                              (static_cast<std::uint32_t>(v2[32]) << 16) |
-                              (static_cast<std::uint32_t>(v2[33]) << 24);
-    std::size_t records_start = hdr_end + init_size;
-    // Each v2 record: 4 frame + 4*nplayers inputs + 8 hash + 3 trailing
-    constexpr std::uint8_t nplayers = 2;
-    constexpr std::size_t v2_record_size = 4 + 4u * nplayers + 8 + 3;
-    constexpr std::size_t v1_record_size = 4 + 4u * nplayers + 8;
-    constexpr std::size_t trailer_size   = 4 + 4 + 8;
-    constexpr std::uint32_t frames = 8;
-
-    std::vector<std::uint8_t> v1;
-    v1.reserve(records_start + frames * v1_record_size + trailer_size);
-    auto seek = [&](std::size_t off) {
-        return v2.begin() + static_cast<std::ptrdiff_t>(off);
-    };
-    v1.insert(v1.end(), v2.begin(), seek(records_start));
-    for (std::uint32_t i = 0; i < frames; ++i) {
-        std::size_t ro = records_start + i * v2_record_size;
-        v1.insert(v1.end(), seek(ro), seek(ro + v1_record_size));
+    // Build a v1 file by hand from the layout described in
+    // recorder.hpp. We then verify that the parser accepts it and
+    // leaves the v2/v3-only fields zeroed.
+    constexpr std::uint8_t  nplayers = 2;
+    constexpr std::uint32_t frames   = 4;
+    ByteWriter w;
+    w.write_bytes("IRCL_REPLAY1", 12);
+    w.write_u16(1);            // version
+    w.write_u16(60);           // tick_hz
+    w.write_u8(nplayers);
+    w.write_u8(0);             // reserved
+    w.write_u64(0xCAFEBABEULL);
+    w.write_u32(64);           // world_capacity
+    w.write_u32(0);            // init_size (no payload)
+    for (std::uint32_t f = 0; f < frames; ++f) {
+        w.write_u32(f);
+        for (std::uint8_t p = 0; p < nplayers; ++p) {
+            PlayerInput in{};
+            in.move_x = static_cast<std::int8_t>(f * (p + 1));
+            pack(w, in);
+        }
+        w.write_u64(0xAA00 + f);
     }
-    std::size_t v2_trailer = records_start + frames * v2_record_size;
-    v1.insert(v1.end(), seek(v2_trailer), seek(v2_trailer + trailer_size));
+    w.write_bytes("ENDR", 4);
+    w.write_u32(frames);
+    w.write_u64(0xBEEFCAFE'12345678ULL);
 
-    auto m = ReplayModel::load({v1.data(), v1.size()});
+    auto m = ReplayModel::load({w.view().data(), w.view().size()});
     REQUIRE(m.has_value());
-    CHECK(m->header().version == 1);
-    CHECK(m->record_count() == frames);
+    CHECK(m->header().version  == 1);
+    CHECK(m->record_count()    == frames);
+    CHECK(m->lag_events().empty());
     for (const auto& rec : m->records()) {
-        CHECK(rec.rollback == 0u);
-        CHECK(rec.flags    == 0u);
+        CHECK(rec.rollback  == 0u);
+        CHECK(rec.flags     == 0u);
         CHECK(rec.pred_diff == 0u);
     }
+}
+
+TEST_CASE("v2 file (no lag block) still parses") {
+    constexpr std::uint8_t  nplayers = 2;
+    constexpr std::uint32_t frames   = 4;
+    ByteWriter w;
+    w.write_bytes("IRCL_REPLAY2", 12);
+    w.write_u16(2);
+    w.write_u16(60);
+    w.write_u8(nplayers);
+    w.write_u8(0);
+    w.write_u64(0xC0DECAFE);
+    w.write_u32(64);
+    w.write_u32(0);
+    for (std::uint32_t f = 0; f < frames; ++f) {
+        w.write_u32(f);
+        for (std::uint8_t p = 0; p < nplayers; ++p) pack(w, PlayerInput{});
+        w.write_u64(0xBB00 + f);
+        w.write_u8(0); w.write_u8(0); w.write_u8(0);   // event lane
+    }
+    w.write_bytes("ENDR", 4);
+    w.write_u32(frames);
+    w.write_u64(0xFEEDC0DE);
+    auto m = ReplayModel::load({w.view().data(), w.view().size()});
+    REQUIRE(m.has_value());
+    CHECK(m->header().version == 2);
+    CHECK(m->lag_events().empty());
+}
+
+TEST_CASE("v3 lag events round-trip and are discoverable via nearest_lag_event") {
+    Recorder rec;
+    rec.begin(60, 2, 0xC0DEULL, 64, {});
+    std::vector<PlayerInput> empty(2);
+    for (std::uint32_t f = 0; f < 100; ++f) {
+        rec.record_v2(f, empty, 0xCC00 + f, 0, 0, 0);
+    }
+    LagEvent e1; e1.frame = 25; e1.attacker_id = 0; e1.target_id = 1;
+                 e1.rewound_ticks = 9; e1.range = Fixed{8};
+                 e1.origin = Vec2{Fixed{1}, Fixed{1}}; e1.dir = Vec2{Fixed{1}, Fixed{0}};
+    LagEvent e2 = e1; e2.frame = 70; e2.target_id = 0xFF;
+    rec.record_lag_event(e1);
+    rec.record_lag_event(e2);
+    auto bytes = rec.finish(0xFEEDFEED);
+
+    auto m = ReplayModel::load({bytes.data(), bytes.size()});
+    REQUIRE(m.has_value());
+    CHECK(m->header().version == 3);
+    REQUIRE(m->lag_events().size() == 2);
+    CHECK(m->lag_events()[0].frame == 25);
+    CHECK(m->lag_events()[0].target_id == 1);
+    CHECK(m->lag_events()[0].rewound_ticks == 9);
+    CHECK(m->lag_events()[1].target_id == 0xFFu);
+
+    // nearest_lag_event lookup.
+    const auto* nearest = m->nearest_lag_event(28, 5);
+    REQUIRE(nearest != nullptr);
+    CHECK(nearest->frame == 25);
+    CHECK(m->nearest_lag_event(40, 3) == nullptr);
 }
 
 TEST_CASE("Replayer::world_at reproduces every recorded frame byte-identically") {
