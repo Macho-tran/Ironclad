@@ -47,6 +47,21 @@ set_tests_properties(test_udp_transport PROPERTIES
     TIMEOUT 60
     LABELS  "network")
 
+# ----- Stress tests (label "stress", opt-in) -----
+# Long-running tests for surfacing slow leaks, integer drift, and
+# extreme-network desyncs. Run with `ctest -L stress`. Each test
+# bounded at a few minutes so the whole suite finishes inside CI's
+# free tier.
+add_executable(test_stress test_stress.cpp doctest_main.cpp
+    ../apps/arena_demo/arena.cpp)
+target_link_libraries(test_stress PRIVATE ironclad ironclad_doctest)
+target_include_directories(test_stress PRIVATE ${CMAKE_SOURCE_DIR})
+ironclad_apply_warnings(test_stress)
+add_test(NAME test_stress COMMAND test_stress)
+set_tests_properties(test_stress PROPERTIES
+    TIMEOUT 600
+    LABELS  "stress")
+
 # ----- libFuzzer harnesses (clang only, IRONCLAD_BUILD_FUZZERS=ON) -----
 if(IRONCLAD_BUILD_FUZZERS)
     if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")

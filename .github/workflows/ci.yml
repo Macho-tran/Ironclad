@@ -59,6 +59,11 @@ jobs:
       - name: Soak smoke (60s)
         run: ctest --test-dir build -C RelWithDebInfo --output-on-failure -L soak --timeout 180
 
+      # 5-minute extended soak + 8-player + extreme netsim. Total
+      # wall-clock well under a minute on the headless harness.
+      - name: Stress tests
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure -L stress --timeout 600
+
       # Determinism cross-check: re-validate the committed
       # samples/sample.iclr (recorded on Linux/GCC) by re-simulating
       # it on whatever compiler this matrix cell is using. If
