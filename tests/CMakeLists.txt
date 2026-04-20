@@ -36,6 +36,7 @@ ironclad_add_test(test_lag_comp)
 ironclad_add_test(test_recorder)
 ironclad_add_test(test_desync)
 ironclad_add_test(test_replay_model)
+ironclad_add_test(test_property)
 
 # UDP transport: tagged "network" so sandboxed CI can opt out.
 add_executable(test_udp_transport test_udp_transport.cpp doctest_main.cpp)
