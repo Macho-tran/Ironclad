@@ -35,6 +35,7 @@ ironclad_add_test(test_session_rollback)
 ironclad_add_test(test_lag_comp)
 ironclad_add_test(test_recorder)
 ironclad_add_test(test_desync)
+ironclad_add_test(test_replay_model)
 
 # Soak smoke: 60s, 4 AI clients, simulated 150ms RTT / 5% loss / 30ms
 # jitter / 2% reorder. Asserts 0 desyncs + bounded rollback + bandwidth

@@ -7,6 +7,7 @@ add_library(ironclad STATIC
     session.cpp
     recorder.cpp
     desync.cpp
+    replay.cpp
 )
 
 target_include_directories(ironclad
