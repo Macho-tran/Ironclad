@@ -34,8 +34,24 @@
 |   |  - XOR + RLE    |   |  - .iclr writer |               |
 |   |  - bit-arith    |   |  - parser       |               |
 |   +-----------------+   +-----------------+               |
+|                                                           |
+|   +---------------------------------------------------+   |
+|   | Replay Studio (library)                           |   |
+|   |  - ReplayModel: stats, events, record index       |   |
+|   |  - Replayer:    deterministic re-sim w/ ckpt cache|   |
+|   |    + validate_hash_chain                          |   |
+|   +---------------------------------------------------+   |
 +-----------------------------------------------------------+
+
+  arena_view (SDL2):
+    live mode    -> renders Session::world() in real time
+    studio mode  -> --replay PATH opens the time-travel debugger
+                    (timeline / input lanes / entity inspector)
+                    via apps/arena_view/studio.{hpp,cpp}.
 ```
+
+See [`REPLAY_STUDIO.md`](REPLAY_STUDIO.md) for the studio's UI,
+file format (v1/v2), and demo script.
 
 ## Sim / View / Transport split
 

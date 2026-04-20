@@ -50,8 +50,8 @@ there. Production rollback needs four other things before it ships:
 | Desync dumper           | `include/ironclad/desync.hpp` + `.cpp`         | ✅     |
 | Headless `arena_demo`   | `apps/arena_demo/`                             | ✅     |
 | Soak smoke test         | `tests/test_soak_smoke.cpp` (CTest label `soak`) | ✅   |
-| SDL2 visual front-end   | `apps/arena_view/` (gated, not in this drop)   | ⏸     |
-| ImGui time-travel UI    | —                                              | ⏸     |
+| SDL2 visual front-end   | `apps/arena_view/`                             | ✅     |
+| **Replay Studio**       | `include/ironclad/replay.hpp` + `apps/arena_view/studio.cpp` | ✅ |
 | Real UDP transport      | — (interface in place, impl deferred)          | ⏸     |
 | Unity / Unreal bindings | —                                              | ⏸     |
 
@@ -79,6 +79,35 @@ CLI flags: `--frames`, `--players`, `--rtt-ms`, `--jitter-ms`,
 `--loss-pct`, `--reorder-pct`, `--seed`, `--record PATH`,
 `--quiet`.
 
+## Replay Studio
+
+A time-travel debugger for the `.iclr` files produced by
+`arena_demo --record`. It re-simulates deterministically from the
+recorded canonical inputs, so you can scrub to any frame, see the
+arena state, inspect entity values, and step through rollback /
+desync events visually.
+
+```bash
+# generate a 30 s sample recording
+./scripts/make-sample.sh
+
+# text summary (CI-friendly)
+./build/apps/arena_demo/arena_demo --replay-info samples/sample.iclr
+
+# interactive studio (needs SDL2)
+cmake -S . -B build -DIRONCLAD_BUILD_SDL_DEMO=ON && cmake --build build --parallel
+./build/apps/arena_view/arena_view --replay samples/sample.iclr
+
+# headless single-frame screenshot (no display required)
+SDL_VIDEODRIVER=offscreen \
+  ./build/apps/arena_view/arena_view \
+    --replay samples/sample.iclr --screenshot studio.bmp --frame 900
+```
+
+See [`docs/REPLAY_STUDIO.md`](docs/REPLAY_STUDIO.md) for the
+architecture, file format (`.iclr` v1 / v2), keyboard map, and a
+2-minute demo script.
+
 ## Measured KPIs
 
 Numbers from a single deterministic run on Linux GCC 13.3, x86_64,
@@ -101,11 +130,14 @@ exercised in CI as the soak smoke test. To reproduce, see
 include/ironclad/    public headers (header-only friendly)
 src/                 .cpp implementations
 third_party/         vendored xxhash + doctest (single-file each)
-apps/arena_demo/     headless 4-AI demo + soak harness
+apps/arena_demo/     headless 4-AI demo + soak harness + .iclr recorder
+apps/arena_view/     SDL2 live frontend + Replay Studio (--replay PATH)
+samples/             tiny pre-recorded .iclr (made by scripts/make-sample.sh)
+scripts/             helpers (make-sample.sh)
 tests/               doctest unit suites (one binary per subsystem)
 .github/workflows/   CI matrix (Linux GCC/Clang verified locally;
-                     macOS/Windows jobs included best-effort)
-docs/                ARCHITECTURE, DETERMINISM, KPIS
+                     macOS Clang job included best-effort)
+docs/                ARCHITECTURE, DETERMINISM, KPIS, REPLAY_STUDIO
 ```
 
 ## Determinism contract
