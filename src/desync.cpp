@@ -11,7 +11,7 @@ DesyncDumper::DesyncDumper(std::string_view directory,
                            std::string_view role)
     : directory_(directory), role_(role) {
     std::error_code ec;
-    std::filesystem::create_directories(directory_, ec);
+    (void)std::filesystem::create_directories(directory_, ec);
     // We swallow `ec`: dump() will surface failure as an empty path.
 }
 

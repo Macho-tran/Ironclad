@@ -52,7 +52,17 @@ there. Production rollback needs four other things before it ships:
 | Soak smoke test         | `tests/test_soak_smoke.cpp` (CTest label `soak`) | ✅   |
 | SDL2 visual front-end   | `apps/arena_view/`                             | ✅     |
 | **Replay Studio**       | `include/ironclad/replay.hpp` + `apps/arena_view/studio.cpp` | ✅ |
-| Real UDP transport      | — (interface in place, impl deferred)          | ⏸     |
+| **Real UDP transport**  | `include/ironclad/udp_transport.hpp` + `arena_demo --net` | ✅ |
+| **Lag-comp visualization** | `.iclr` v3 + `Studio::render_arena` ghost hitboxes | ✅ |
+| **Pred-vs-auth ribbon** | `.iclr` v4 + `Studio::render_input_lanes` 2-row ribbon | ✅ |
+| **ImGui control panel** | gated `IRONCLAD_USE_IMGUI=ON`, FetchContent v1.90 | ✅ |
+| **CI artifact pipeline** | `.github/workflows/ci.yml` artifacts job          | ✅ |
+| **Cross-platform replay determinism** | CI step in every matrix cell        | ✅ |
+| **MSVC port** (`_mul128`/`_div128`) | `fixed.hpp`; Windows in CI matrix     | ✅ |
+| **libFuzzer harnesses** | `tests/fuzz_*.cpp` (clang only, opt-in)        | ✅ |
+| **Property tests**      | `tests/test_property.cpp`                      | ✅ |
+| **Stress tests**        | `tests/test_stress.cpp` (label `stress`)       | ✅ |
+| **HARDENING.md**        | `docs/HARDENING.md`                            | ✅ |
 | Unity / Unreal bindings | —                                              | ⏸     |
 
 ## Quickstart
@@ -105,8 +115,31 @@ SDL_VIDEODRIVER=offscreen \
 ```
 
 See [`docs/REPLAY_STUDIO.md`](docs/REPLAY_STUDIO.md) for the
-architecture, file format (`.iclr` v1 / v2), keyboard map, and a
-2-minute demo script.
+architecture, file format (`.iclr` v1 / v2 / v3 / v4), keyboard map,
+and a 2-minute demo script.
+
+## Real UDP between two processes
+
+```bash
+# Terminal A (host, listens on :7777 as player 0)
+./build/apps/arena_demo/arena_demo --net listen \
+    --port 7777 --players 2 --my-id 0 --frames 1800
+
+# Terminal B (client, connects to host as player 1)
+./build/apps/arena_demo/arena_demo --net connect \
+    --remote 127.0.0.1:7777 --port 7778 \
+    --players 2 --my-id 1 --frames 1800 --record /tmp/match.iclr
+```
+
+Both processes converge on byte-identical state; either side can
+record an `.iclr` file from the live UDP traffic.
+
+## Hardening
+
+See [`docs/HARDENING.md`](docs/HARDENING.md) for the test surface
+(unit + property + soak + stress + sanitizers + libFuzzer +
+cross-platform replay), the actual bugs found by each layer, and
+how to reproduce them.
 
 ## Measured KPIs
 

@@ -1,0 +1,28 @@
+# clang-tidy configuration for ironclad. Focused on bugprone /
+# cert / cppcoreguidelines diagnostics; we deliberately disable
+# the noisier modernize-* and readability-* checks since those
+# would generate hundreds of suggestions without surfacing real
+# bugs. Suppressions on a per-file basis go via NOLINT comments
+# at the call site, not via this file.
+Checks: >
+  bugprone-*,
+  cert-*,
+  cppcoreguidelines-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-special-member-functions,
+  -cert-err58-cpp
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/ironclad/.*'
+FormatStyle: file
