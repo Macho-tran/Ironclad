@@ -1,0 +1,1 @@
+/usr/bin/c++ -g -fsanitize=address,undefined CMakeFiles/arena_demo.dir/main.cpp.o CMakeFiles/arena_demo.dir/arena.cpp.o CMakeFiles/arena_demo.dir/arena_udp.cpp.o -o arena_demo   -L/usr/lib/gcc/x86_64-linux-gnu/14  ../../src/libironclad.a ../../libironclad_xxhash.a 

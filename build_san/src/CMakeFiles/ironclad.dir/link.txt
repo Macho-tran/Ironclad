@@ -1,0 +1,2 @@
+/usr/bin/ar qc libironclad.a CMakeFiles/ironclad.dir/placeholder.cpp.o CMakeFiles/ironclad.dir/hash.cpp.o CMakeFiles/ironclad.dir/delta.cpp.o CMakeFiles/ironclad.dir/range_coder.cpp.o CMakeFiles/ironclad.dir/session.cpp.o CMakeFiles/ironclad.dir/recorder.cpp.o CMakeFiles/ironclad.dir/desync.cpp.o CMakeFiles/ironclad.dir/replay.cpp.o CMakeFiles/ironclad.dir/udp_transport.cpp.o
+/usr/bin/ranlib libironclad.a

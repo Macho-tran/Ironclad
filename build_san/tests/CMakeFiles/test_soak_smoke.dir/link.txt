@@ -1,0 +1,1 @@
+/usr/bin/c++ -g -fsanitize=address,undefined CMakeFiles/test_soak_smoke.dir/test_soak_smoke.cpp.o CMakeFiles/test_soak_smoke.dir/doctest_main.cpp.o CMakeFiles/test_soak_smoke.dir/__/apps/arena_demo/arena.cpp.o -o test_soak_smoke   -L/usr/lib/gcc/x86_64-linux-gnu/14  ../src/libironclad.a ../libironclad_xxhash.a 

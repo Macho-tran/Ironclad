@@ -1,0 +1,18 @@
+test_smoke 2 0.00480096
+test_fixed 2 0.00535223
+test_vec2 2 0.00476235
+test_rng 2 0.00807051
+test_hash 2 0.00481865
+test_ecs 2 0.00644343
+test_snapshot 2 0.00472741
+test_delta 2 0.0102537
+test_range_coder 2 0.135186
+test_netsim 2 3.09532
+test_session_rollback 2 0.267424
+test_lag_comp 2 0.00643184
+test_recorder 1 0.0121931
+test_desync 2 0.00689884
+test_replay_model 1 0.12429
+test_udp_transport 2 0.12662
+test_soak_smoke 2 5.31092
+---

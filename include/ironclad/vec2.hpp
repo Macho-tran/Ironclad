@@ -30,10 +30,14 @@ struct Vec2 {
     friend constexpr Vec2 operator-(Vec2 a, Vec2 b) noexcept {
         return Vec2{a.x - b.x, a.y - b.y};
     }
-    friend constexpr Vec2 operator*(Vec2 a, Fixed s) noexcept {
+    // Note: these are not constexpr because the MSVC backend of
+    // `Fixed::operator*` uses non-constexpr intrinsics. The
+    // GCC/Clang backend would allow constexpr, but keeping the API
+    // uniform across toolchains avoids surprises.
+    friend Vec2 operator*(Vec2 a, Fixed s) noexcept {
         return Vec2{a.x * s, a.y * s};
     }
-    friend constexpr Vec2 operator*(Fixed s, Vec2 a) noexcept {
+    friend Vec2 operator*(Fixed s, Vec2 a) noexcept {
         return Vec2{a.x * s, a.y * s};
     }
 
@@ -41,10 +45,10 @@ struct Vec2 {
     Vec2& operator-=(Vec2 b) noexcept { *this = *this - b; return *this; }
     Vec2& operator*=(Fixed s) noexcept { *this = *this * s; return *this; }
 
-    constexpr Fixed dot(Vec2 b) const noexcept {
+    Fixed dot(Vec2 b) const noexcept {
         return x * b.x + y * b.y;
     }
-    constexpr Fixed length_sq() const noexcept {
+    Fixed length_sq() const noexcept {
         return dot(*this);
     }
     Fixed length() const noexcept {

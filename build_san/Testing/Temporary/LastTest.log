@@ -1,0 +1,368 @@
+Start testing: Apr 20 03:46 UTC
+----------------------------------------------------------
+1/17 Testing: test_smoke
+1/17 Test: test_smoke
+Command: "/workspace/build_san/tests/test_smoke"
+Directory: /workspace/build_san/tests
+"test_smoke" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases: 1 | 1 passed | 0 failed | 0 skipped
+[doctest] assertions: 3 | 3 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_smoke" end time: Apr 20 03:46 UTC
+"test_smoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/17 Testing: test_fixed
+2/17 Test: test_fixed
+Command: "/workspace/build_san/tests/test_fixed"
+Directory: /workspace/build_san/tests
+"test_fixed" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:  14 |  14 passed | 0 failed | 0 skipped
+[doctest] assertions: 145 | 145 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_fixed" end time: Apr 20 03:46 UTC
+"test_fixed" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/17 Testing: test_vec2
+3/17 Test: test_vec2
+Command: "/workspace/build_san/tests/test_vec2"
+Directory: /workspace/build_san/tests
+"test_vec2" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:  7 |  7 passed | 0 failed | 0 skipped
+[doctest] assertions: 14 | 14 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_vec2" end time: Apr 20 03:46 UTC
+"test_vec2" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/17 Testing: test_rng
+4/17 Test: test_rng
+Command: "/workspace/build_san/tests/test_rng"
+Directory: /workspace/build_san/tests
+"test_rng" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:    7 |    7 passed | 0 failed | 0 skipped
+[doctest] assertions: 9245 | 9245 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"test_rng" end time: Apr 20 03:46 UTC
+"test_rng" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/17 Testing: test_hash
+5/17 Test: test_hash
+Command: "/workspace/build_san/tests/test_hash"
+Directory: /workspace/build_san/tests
+"test_hash" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases: 6 | 6 passed | 0 failed | 0 skipped
+[doctest] assertions: 7 | 7 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_hash" end time: Apr 20 03:46 UTC
+"test_hash" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/17 Testing: test_ecs
+6/17 Test: test_ecs
+Command: "/workspace/build_san/tests/test_ecs"
+Directory: /workspace/build_san/tests
+"test_ecs" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:  8 |  8 passed | 0 failed | 0 skipped
+[doctest] assertions: 24 | 24 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_ecs" end time: Apr 20 03:46 UTC
+"test_ecs" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/17 Testing: test_snapshot
+7/17 Test: test_snapshot
+Command: "/workspace/build_san/tests/test_snapshot"
+Directory: /workspace/build_san/tests
+"test_snapshot" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:  5 |  5 passed | 0 failed | 0 skipped
+[doctest] assertions: 75 | 75 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_snapshot" end time: Apr 20 03:46 UTC
+"test_snapshot" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/17 Testing: test_delta
+8/17 Test: test_delta
+Command: "/workspace/build_san/tests/test_delta"
+Directory: /workspace/build_san/tests
+"test_delta" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:   7 |   7 passed | 0 failed | 0 skipped
+[doctest] assertions: 212 | 212 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"test_delta" end time: Apr 20 03:46 UTC
+"test_delta" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/17 Testing: test_range_coder
+9/17 Test: test_range_coder
+Command: "/workspace/build_san/tests/test_range_coder"
+Directory: /workspace/build_san/tests
+"test_range_coder" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:   8 |   8 passed | 0 failed | 0 skipped
+[doctest] assertions: 984 | 984 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.27 sec
+----------------------------------------------------------
+Test Passed.
+"test_range_coder" end time: Apr 20 03:46 UTC
+"test_range_coder" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/17 Testing: test_netsim
+10/17 Test: test_netsim
+Command: "/workspace/build_san/tests/test_netsim"
+Directory: /workspace/build_san/tests
+"test_netsim" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:  5 |  5 passed | 0 failed | 0 skipped
+[doctest] assertions: 17 | 17 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   6.19 sec
+----------------------------------------------------------
+Test Passed.
+"test_netsim" end time: Apr 20 03:46 UTC
+"test_netsim" time elapsed: 00:00:06
+----------------------------------------------------------
+
+11/17 Testing: test_session_rollback
+11/17 Test: test_session_rollback
+Command: "/workspace/build_san/tests/test_session_rollback"
+Directory: /workspace/build_san/tests
+"test_session_rollback" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:  2 |  2 passed | 0 failed | 0 skipped
+[doctest] assertions: 10 | 10 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.53 sec
+----------------------------------------------------------
+Test Passed.
+"test_session_rollback" end time: Apr 20 03:46 UTC
+"test_session_rollback" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/17 Testing: test_lag_comp
+12/17 Test: test_lag_comp
+Command: "/workspace/build_san/tests/test_lag_comp"
+Directory: /workspace/build_san/tests
+"test_lag_comp" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases: 6 | 6 passed | 0 failed | 0 skipped
+[doctest] assertions: 9 | 9 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_lag_comp" end time: Apr 20 03:46 UTC
+"test_lag_comp" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/17 Testing: test_recorder
+13/17 Test: test_recorder
+Command: "/workspace/build_san/tests/test_recorder"
+Directory: /workspace/build_san/tests
+"test_recorder" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:   4 |   4 passed | 0 failed | 0 skipped
+[doctest] assertions: 221 | 221 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_recorder" end time: Apr 20 03:46 UTC
+"test_recorder" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/17 Testing: test_desync
+14/17 Test: test_desync
+Command: "/workspace/build_san/tests/test_desync"
+Directory: /workspace/build_san/tests
+"test_desync" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:  2 |  2 passed | 0 failed | 0 skipped
+[doctest] assertions: 12 | 12 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_desync" end time: Apr 20 03:46 UTC
+"test_desync" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/17 Testing: test_replay_model
+15/17 Test: test_replay_model
+Command: "/workspace/build_san/tests/test_replay_model"
+Directory: /workspace/build_san/tests
+"test_replay_model" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases:   9 |   9 passed | 0 failed | 0 skipped
+[doctest] assertions: 520 | 520 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"test_replay_model" end time: Apr 20 03:46 UTC
+"test_replay_model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/17 Testing: test_udp_transport
+16/17 Test: test_udp_transport
+Command: "/workspace/build_san/tests/test_udp_transport"
+Directory: /workspace/build_san/tests
+"test_udp_transport" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+===============================================================================
+[doctest] test cases: 2 | 2 passed | 0 failed | 0 skipped
+[doctest] assertions: 9 | 9 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =   0.25 sec
+----------------------------------------------------------
+Test Passed.
+"test_udp_transport" end time: Apr 20 03:46 UTC
+"test_udp_transport" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/17 Testing: test_soak_smoke
+17/17 Test: test_soak_smoke
+Command: "/workspace/build_san/tests/test_soak_smoke"
+Directory: /workspace/build_san/tests
+"test_soak_smoke" start time: Apr 20 03:46 UTC
+Output:
+----------------------------------------------------------
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+soak: ticks=3600 rollback=5.21f/tick bw=14.6KB/s desync=no
+===============================================================================
+[doctest] test cases: 1 | 1 passed | 0 failed | 0 skipped
+[doctest] assertions: 3 | 3 passed | 0 failed |
+[doctest] Status: SUCCESS!
+<end of output>
+Test time =  10.62 sec
+----------------------------------------------------------
+Test Passed.
+"test_soak_smoke" end time: Apr 20 03:46 UTC
+"test_soak_smoke" time elapsed: 00:00:10
+----------------------------------------------------------
+
+End testing: Apr 20 03:46 UTC
+
+network =   0.25 sec*proc
+
+soak =  10.62 sec*proc
+
+unit =   7.26 sec*proc
+

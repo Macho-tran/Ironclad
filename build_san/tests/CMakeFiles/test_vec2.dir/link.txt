@@ -1,0 +1,1 @@
+/usr/bin/c++ -g -fsanitize=address,undefined CMakeFiles/test_vec2.dir/test_vec2.cpp.o CMakeFiles/test_vec2.dir/doctest_main.cpp.o -o test_vec2   -L/usr/lib/gcc/x86_64-linux-gnu/14  ../src/libironclad.a ../libironclad_xxhash.a 

@@ -53,7 +53,9 @@ public:
     std::uint8_t*       data()       noexcept { return bytes_.data(); }
 
     bool test(std::size_t i) const noexcept {
-        return (bytes_[i >> 3] >> (i & 7u)) & 1u;
+        const auto shift = static_cast<unsigned>(i & 7u);
+        const auto byte  = static_cast<unsigned>(bytes_[i >> 3]);
+        return ((byte >> shift) & 1u) != 0u;
     }
     void set(std::size_t i) noexcept {
         bytes_[i >> 3] = static_cast<std::uint8_t>(

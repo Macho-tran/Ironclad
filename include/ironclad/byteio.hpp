@@ -108,7 +108,12 @@ public:
     }
 
     void read_bytes(void* dst, std::size_t n) noexcept {
-        if (pos_ + n > size_) { error_ = true; pos_ = size_; std::memset(dst, 0, n); return; }
+        if (n == 0) return;     // memcpy(nullptr, ..., 0) is UB per C
+        if (pos_ + n > size_) {
+            error_ = true; pos_ = size_;
+            if (dst) std::memset(dst, 0, n);
+            return;
+        }
         std::memcpy(dst, data_ + pos_, n);
         pos_ += n;
     }

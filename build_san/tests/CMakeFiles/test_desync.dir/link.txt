@@ -1,0 +1,1 @@
+/usr/bin/c++ -g -fsanitize=address,undefined CMakeFiles/test_desync.dir/test_desync.cpp.o CMakeFiles/test_desync.dir/doctest_main.cpp.o -o test_desync   -L/usr/lib/gcc/x86_64-linux-gnu/14  ../src/libironclad.a ../libironclad_xxhash.a 

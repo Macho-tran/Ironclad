@@ -1,0 +1,2 @@
+/usr/bin/ar qc libironclad_xxhash.a CMakeFiles/ironclad_xxhash.dir/third_party/xxhash/xxhash.c.o
+/usr/bin/ranlib libironclad_xxhash.a
