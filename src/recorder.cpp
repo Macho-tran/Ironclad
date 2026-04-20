@@ -8,10 +8,11 @@
 namespace ironclad {
 
 namespace {
-constexpr char        kMagic[]       = "IRCL_REPLAY1";   // 12 bytes incl. NUL
-constexpr std::size_t kMagicSize     = 12;
-constexpr char        kTrailerMagic[] = "ENDR";
-constexpr std::uint16_t kReplayVersion = 1;
+constexpr char        kMagicV1[]       = "IRCL_REPLAY1";   // 12 bytes incl. NUL
+constexpr char        kMagicV2[]       = "IRCL_REPLAY2";   // 12 bytes incl. NUL
+constexpr std::size_t kMagicSize       = 12;
+constexpr char        kTrailerMagic[]  = "ENDR";
+constexpr std::uint16_t kReplayVersion = 2;
 }  // namespace
 
 void Recorder::begin(std::uint16_t tick_hz,
@@ -24,7 +25,7 @@ void Recorder::begin(std::uint16_t tick_hz,
     frames_      = 0;
 
     ByteWriter w;
-    w.write_bytes(kMagic, kMagicSize);
+    w.write_bytes(kMagicV2, kMagicSize);
     w.write_u16(kReplayVersion);
     w.write_u16(tick_hz);
     w.write_u8(num_players);
@@ -39,6 +40,15 @@ void Recorder::begin(std::uint16_t tick_hz,
 void Recorder::record(std::uint32_t frame,
                       std::span<const PlayerInput> per_player_inputs,
                       std::uint64_t hash) {
+    record_v2(frame, per_player_inputs, hash, 0, 0, 0);
+}
+
+void Recorder::record_v2(std::uint32_t frame,
+                         std::span<const PlayerInput> per_player_inputs,
+                         std::uint64_t hash,
+                         std::uint8_t  rollback,
+                         std::uint8_t  flags,
+                         std::uint8_t  pred_diff) {
     if (per_player_inputs.size() != num_players_) {
         // We could throw; for the test+demo path we just refuse.
         return;
@@ -47,6 +57,9 @@ void Recorder::record(std::uint32_t frame,
     w.write_u32(frame);
     for (auto in : per_player_inputs) pack(w, in);
     w.write_u64(hash);
+    w.write_u8(rollback);
+    w.write_u8(flags);
+    w.write_u8(pred_diff);
     out_.insert(out_.end(), w.view().begin(), w.view().end());
     ++frames_;
 }
@@ -67,9 +80,15 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
     ByteReader r(bytes.data(), bytes.size());
     char magic[kMagicSize];
     r.read_bytes(magic, kMagicSize);
-    if (r.error() || std::memcmp(magic, kMagic, kMagicSize) != 0) return false;
-    hdr.version       = r.read_u16();
-    if (hdr.version != kReplayVersion) return false;
+    if (r.error()) return false;
+    bool is_v2 = std::memcmp(magic, kMagicV2, kMagicSize) == 0;
+    bool is_v1 = std::memcmp(magic, kMagicV1, kMagicSize) == 0;
+    if (!is_v1 && !is_v2) return false;
+
+    hdr.version = r.read_u16();
+    if ((is_v2 && hdr.version != 2) || (is_v1 && hdr.version != 1)) {
+        return false;
+    }
     hdr.tick_hz       = r.read_u16();
     hdr.num_players   = r.read_u8();
     [[maybe_unused]] auto reserved = r.read_u8();
@@ -96,6 +115,11 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
             rec.inputs[p] = unpack_input(r);
         }
         rec.hash = r.read_u64();
+        if (is_v2) {
+            rec.rollback  = r.read_u8();
+            rec.flags     = r.read_u8();
+            rec.pred_diff = r.read_u8();
+        }
         if (r.error()) return false;
         records.push_back(std::move(rec));
     }
