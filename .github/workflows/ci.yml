@@ -51,6 +51,18 @@ jobs:
       - name: Soak smoke (60s)
         run: ctest --test-dir build -C RelWithDebInfo --output-on-failure -L soak --timeout 180
 
+      # Determinism cross-check: re-validate the committed
+      # samples/sample.iclr (recorded on Linux/GCC) by re-simulating
+      # it on whatever compiler this matrix cell is using. If
+      # __int128 / serialization / RNG differ across toolchains the
+      # recorded hash chain will not match and this step will fail.
+      - name: Cross-platform replay determinism
+        shell: bash
+        run: |
+          ./build/apps/arena_demo/arena_demo --replay-info samples/sample.iclr \
+              | tee /tmp/info.txt
+          grep -q "hash chain        : OK" /tmp/info.txt
+
   asan:
     name: ubuntu / gcc / asan+ubsan
     runs-on: ubuntu-latest
