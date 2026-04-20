@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_recorder.dir/test_recorder.cpp.o CMakeFiles/test_recorder.dir/doctest_main.cpp.o -o test_recorder  ../src/libironclad.a ../libironclad_xxhash.a 

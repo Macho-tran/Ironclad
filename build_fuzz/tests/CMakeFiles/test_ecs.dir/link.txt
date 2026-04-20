@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_ecs.dir/test_ecs.cpp.o CMakeFiles/test_ecs.dir/doctest_main.cpp.o -o test_ecs  ../src/libironclad.a ../libironclad_xxhash.a 

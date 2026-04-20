@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_vec2.dir/test_vec2.cpp.o CMakeFiles/test_vec2.dir/doctest_main.cpp.o -o test_vec2  ../src/libironclad.a ../libironclad_xxhash.a 

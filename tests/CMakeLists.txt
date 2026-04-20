@@ -46,6 +46,39 @@ set_tests_properties(test_udp_transport PROPERTIES
     TIMEOUT 60
     LABELS  "network")
 
+# ----- libFuzzer harnesses (clang only, IRONCLAD_BUILD_FUZZERS=ON) -----
+if(IRONCLAD_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        message(WARNING "IRONCLAD_BUILD_FUZZERS=ON but compiler is not Clang; skipping")
+    else()
+        function(ironclad_add_fuzzer name)
+            add_executable(${name} ${name}.cpp)
+            target_link_libraries(${name} PRIVATE ironclad)
+            target_compile_options(${name} PRIVATE
+                -fsanitize=fuzzer,address,undefined
+                -fno-sanitize-recover=all
+                -O1 -g)
+            target_link_options(${name} PRIVATE
+                -fsanitize=fuzzer,address,undefined)
+            # Add a CTest entry that runs the fuzzer for ~30s with
+            # the existing test fixtures as initial corpus. Tagged
+            # "fuzz" so default CI doesn't run it; opt-in via
+            # `ctest -L fuzz`.
+            add_test(NAME ${name}
+                COMMAND ${name} -max_total_time=30
+                                -print_final_stats=1)
+            set_tests_properties(${name} PROPERTIES
+                TIMEOUT 60
+                LABELS  "fuzz")
+        endfunction()
+
+        ironclad_add_fuzzer(fuzz_replay_parse)
+        ironclad_add_fuzzer(fuzz_packet_decode)
+        ironclad_add_fuzzer(fuzz_range_coder)
+        ironclad_add_fuzzer(fuzz_delta_decode)
+    endif()
+endif()
+
 # Soak smoke: 60s, 4 AI clients, simulated 150ms RTT / 5% loss / 30ms
 # jitter / 2% reorder. Asserts 0 desyncs + bounded rollback + bandwidth
 # under the KPI cap. Tagged "soak" so CI can run it as a separate step.

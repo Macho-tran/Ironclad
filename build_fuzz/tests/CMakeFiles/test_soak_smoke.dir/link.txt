@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_soak_smoke.dir/test_soak_smoke.cpp.o CMakeFiles/test_soak_smoke.dir/doctest_main.cpp.o CMakeFiles/test_soak_smoke.dir/__/apps/arena_demo/arena.cpp.o -o test_soak_smoke  ../src/libironclad.a ../libironclad_xxhash.a 

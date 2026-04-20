@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g -fsanitize=fuzzer,address,undefined CMakeFiles/fuzz_delta_decode.dir/fuzz_delta_decode.cpp.o -o fuzz_delta_decode  ../src/libironclad.a ../libironclad_xxhash.a 

@@ -144,6 +144,14 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
     hdr.world_capacity = r.read_u32();
     auto init_size     = r.read_u32();
     if (r.error()) return false;
+    // Sanity-check init_size and num_players against the file we
+    // actually have in hand. Without these checks an attacker could
+    // ship a header claiming a 4 GB initial snapshot or 65535 players
+    // and we'd happily try to allocate that much before noticing.
+    if (init_size > bytes.size())   return false;
+    if (hdr.num_players == 0 ||
+        hdr.num_players > 64)       return false;
+    if (hdr.world_capacity > 65536) return false;
     hdr.initial_snapshot.resize(init_size);
     r.read_bytes(hdr.initial_snapshot.data(), init_size);
     if (r.error()) return false;
@@ -198,6 +206,12 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
         r.read_bytes(lblock, 4);
         const std::uint32_t n = r.read_u32();
         if (r.error()) return false;
+        // Each LagEvent is 4 + 1 + 1 + 2 + 8*5 = 48 bytes on the wire.
+        // Reject claims that obviously exceed the remaining payload so
+        // we don't try to reserve gigabytes for a 100-byte file.
+        constexpr std::uint32_t kMinLagEventBytes = 48;
+        if (static_cast<std::uint64_t>(n) * kMinLagEventBytes >
+            r.remaining()) return false;
         lag_events.reserve(n);
         for (std::uint32_t i = 0; i < n; ++i) {
             LagEvent ev;

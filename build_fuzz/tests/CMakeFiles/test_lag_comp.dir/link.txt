@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_lag_comp.dir/test_lag_comp.cpp.o CMakeFiles/test_lag_comp.dir/doctest_main.cpp.o -o test_lag_comp  ../src/libironclad.a ../libironclad_xxhash.a 

@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g -fsanitize=fuzzer,address,undefined CMakeFiles/fuzz_range_coder.dir/fuzz_range_coder.cpp.o -o fuzz_range_coder  ../src/libironclad.a ../libironclad_xxhash.a 

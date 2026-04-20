@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_smoke.dir/test_smoke.cpp.o CMakeFiles/test_smoke.dir/doctest_main.cpp.o -o test_smoke  ../src/libironclad.a ../libironclad_xxhash.a 

@@ -14,6 +14,7 @@ option(IRONCLAD_USE_IMGUI      "Replay Studio uses ImGui for the control panel (
 option(IRONCLAD_SANITIZE       "Enable AddressSanitizer + UBSan" OFF)
 option(IRONCLAD_LTO            "Enable link-time optimization" OFF)
 option(IRONCLAD_WERROR         "Treat warnings as errors" ON)
+option(IRONCLAD_BUILD_FUZZERS  "Build libFuzzer harnesses (clang only)" OFF)
 
 # ---------------------------------------------------------------------------
 # Global C++ settings

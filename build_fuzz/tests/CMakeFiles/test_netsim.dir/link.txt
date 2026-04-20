@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_netsim.dir/test_netsim.cpp.o CMakeFiles/test_netsim.dir/doctest_main.cpp.o -o test_netsim  ../src/libironclad.a ../libironclad_xxhash.a 

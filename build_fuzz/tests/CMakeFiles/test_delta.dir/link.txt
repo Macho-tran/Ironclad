@@ -1,0 +1,1 @@
+/usr/bin/clang++ -g CMakeFiles/test_delta.dir/test_delta.cpp.o CMakeFiles/test_delta.dir/doctest_main.cpp.o -o test_delta  ../src/libironclad.a ../libironclad_xxhash.a 

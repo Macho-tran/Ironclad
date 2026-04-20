@@ -181,7 +181,17 @@ private:
 
     int read_bit() {
         if (bit_pos_ == 0) {
-            bit_buf_ = pos_ < size_ ? data_[pos_++] : std::uint8_t{0};
+            if (pos_ < size_) {
+                bit_buf_ = data_[pos_++];
+            } else {
+                bit_buf_ = 0;
+                ++past_eof_bytes_;
+                // After ~64 bytes of zero-padding past EOF the
+                // decoder is just chasing imaginary symbols. Set
+                // the error flag so RangeCoder::decode returns
+                // false instead of running until kHardCap.
+                if (past_eof_bytes_ > 64) error_ = true;
+            }
             bit_pos_ = 8;
         }
         int b = (bit_buf_ >> 7) & 1;
@@ -192,6 +202,7 @@ private:
 
     const std::uint8_t* data_;
     std::size_t         size_;
+    std::size_t         past_eof_bytes_ = 0;
     std::size_t         pos_     = 0;
     std::uint32_t       low_     = 0;
     std::uint32_t       high_    = 0xFFFF'FFFFu;
@@ -257,12 +268,19 @@ bool RangeCoder::decode(std::span<const std::uint8_t> in,
                         std::vector<std::uint8_t>&    out) {
     Model      m{};
     BitDecoder dec(in.data(), in.size());
+    // Cap the output at 32 MB to prevent unbounded growth on
+    // adversarial input. Legitimate compressed streams are well
+    // under this; the cap exists so a malformed bitstream that
+    // happens to keep emitting "valid" symbols (often via the
+    // zero-padding past EOF) eventually terminates instead of
+    // running until OOM.
+    const std::size_t kHardCap = std::size_t{32} * 1024 * 1024;
     while (true) {
         int sym = get_symbol(dec, m);
         if (dec.error()) return false;
         if (sym < 0) break;
         out.push_back(static_cast<std::uint8_t>(sym));
-        if (out.size() > 32u * 1024u * 1024u) return false;  // sanity cap
+        if (out.size() > kHardCap) return false;
     }
     return true;
 }
