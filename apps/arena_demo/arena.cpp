@@ -173,6 +173,8 @@ Result run(const Options& opts) {
         std::uint8_t             rollback  = 0;
         std::uint8_t             flags     = 0;
         std::uint8_t             pred_diff = 0;
+        // predicted[observer * num_players + target]
+        std::vector<PlayerInput> predicted;
     };
     std::vector<RecCapture> rec_captures;
     std::vector<LagEvent>   rec_lag_events;
@@ -201,20 +203,20 @@ Result run(const Options& opts) {
             canonical[p] = ai_input(f, p);
         }
         std::uint8_t pred_diff = 0;
+        std::vector<PlayerInput> predicted_matrix;
         if (opts.record_path) {
-            for (std::uint8_t observer = 0; observer < opts.num_players; ++observer) {
-                for (std::uint8_t target = 0; target < opts.num_players; ++target) {
-                    if (observer == target) continue;
-                    auto opt = sessions[observer]->input_for(target, f);
-                    // If we have an authoritative input for that peer
-                    // (rare for the *current* frame) it'd match; if we
-                    // don't, prediction is "repeat last" — only the
-                    // session knows what that resolves to. We approximate
-                    // by treating "no authoritative input yet" as a
-                    // potential mismatch only if the canonical value
-                    // differs from the most recently-known input.
-                    PlayerInput predicted = opt.value_or(PlayerInput{});
-                    if (predicted != canonical[target]) {
+            const std::size_t N = opts.num_players;
+            predicted_matrix.assign(N * N, PlayerInput{});
+            for (std::uint8_t observer = 0; observer < N; ++observer) {
+                for (std::uint8_t target = 0; target < N; ++target) {
+                    PlayerInput predicted = (observer == target)
+                        ? canonical[target]
+                        : sessions[observer]->input_for(target, f)
+                              .value_or(PlayerInput{});
+                    predicted_matrix[
+                        static_cast<std::size_t>(observer) * N + target] =
+                        predicted;
+                    if (observer != target && predicted != canonical[target]) {
                         pred_diff = static_cast<std::uint8_t>(
                             pred_diff | (1u << target));
                     }
@@ -310,7 +312,8 @@ Result run(const Options& opts) {
                     break;
                 }
             }
-            rec_captures.push_back({canonical, rollback, flags, pred_diff});
+            rec_captures.push_back({canonical, rollback, flags, pred_diff,
+                                    std::move(predicted_matrix)});
         }
 
         // Per-second status line from player 0's perspective.
@@ -364,8 +367,9 @@ Result run(const Options& opts) {
                        static_cast<std::uint8_t>(c.inputs.size()), rng);
             ByteWriter h; world.serialize(h); h.write_u64(rng.state());
             final_hash = ironclad::hash64(h.view().data(), h.view().size());
-            rec.record_v2(static_cast<std::uint32_t>(i), c.inputs,
-                          final_hash, c.rollback, c.flags, c.pred_diff);
+            rec.record_v3(static_cast<std::uint32_t>(i), c.inputs,
+                          final_hash, c.rollback, c.flags, c.pred_diff,
+                          {c.predicted.data(), c.predicted.size()});
         }
         // Append all lag-comp events captured during the live run.
         for (const auto& ev : rec_lag_events) rec.record_lag_event(ev);

@@ -11,10 +11,11 @@ namespace {
 constexpr char        kMagicV1[]       = "IRCL_REPLAY1";   // 12 bytes incl. NUL
 constexpr char        kMagicV2[]       = "IRCL_REPLAY2";   // 12 bytes incl. NUL
 constexpr char        kMagicV3[]       = "IRCL_REPLAY3";   // 12 bytes incl. NUL
+constexpr char        kMagicV4[]       = "IRCL_REPLAY4";   // 12 bytes incl. NUL
 constexpr std::size_t kMagicSize       = 12;
 constexpr char        kTrailerMagic[]  = "ENDR";
 constexpr char        kLagBlockMagic[] = "LAGE";           // before lag-event block
-constexpr std::uint16_t kReplayVersion = 3;
+constexpr std::uint16_t kReplayVersion = 4;
 }  // namespace
 
 void Recorder::begin(std::uint16_t tick_hz,
@@ -29,7 +30,7 @@ void Recorder::begin(std::uint16_t tick_hz,
     lag_events_.clear();
 
     ByteWriter w;
-    w.write_bytes(kMagicV3, kMagicSize);
+    w.write_bytes(kMagicV4, kMagicSize);
     w.write_u16(kReplayVersion);
     w.write_u16(tick_hz);
     w.write_u8(num_players);
@@ -57,10 +58,21 @@ void Recorder::record_v2(std::uint32_t frame,
                          std::uint8_t  rollback,
                          std::uint8_t  flags,
                          std::uint8_t  pred_diff) {
+    record_v3(frame, per_player_inputs, hash, rollback, flags, pred_diff, {});
+}
+
+void Recorder::record_v3(std::uint32_t frame,
+                         std::span<const PlayerInput> per_player_inputs,
+                         std::uint64_t hash,
+                         std::uint8_t  rollback,
+                         std::uint8_t  flags,
+                         std::uint8_t  pred_diff,
+                         std::span<const PlayerInput> predicted) {
     if (per_player_inputs.size() != num_players_) {
-        // We could throw; for the test+demo path we just refuse.
         return;
     }
+    const std::size_t expected = static_cast<std::size_t>(num_players_) *
+                                 static_cast<std::size_t>(num_players_);
     ByteWriter w;
     w.write_u32(frame);
     for (auto in : per_player_inputs) pack(w, in);
@@ -68,6 +80,13 @@ void Recorder::record_v2(std::uint32_t frame,
     w.write_u8(rollback);
     w.write_u8(flags);
     w.write_u8(pred_diff);
+    // Predicted matrix: write either the supplied values or zeroes.
+    if (predicted.size() == expected) {
+        for (auto in : predicted) pack(w, in);
+    } else {
+        const PlayerInput zero{};
+        for (std::size_t i = 0; i < expected; ++i) pack(w, zero);
+    }
     out_.insert(out_.end(), w.view().begin(), w.view().end());
     ++frames_;
 }
@@ -105,13 +124,15 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
     char magic[kMagicSize];
     r.read_bytes(magic, kMagicSize);
     if (r.error()) return false;
+    const bool is_v4 = std::memcmp(magic, kMagicV4, kMagicSize) == 0;
     const bool is_v3 = std::memcmp(magic, kMagicV3, kMagicSize) == 0;
     const bool is_v2 = std::memcmp(magic, kMagicV2, kMagicSize) == 0;
     const bool is_v1 = std::memcmp(magic, kMagicV1, kMagicSize) == 0;
-    if (!is_v1 && !is_v2 && !is_v3) return false;
+    if (!is_v1 && !is_v2 && !is_v3 && !is_v4) return false;
 
     hdr.version = r.read_u16();
-    if ((is_v3 && hdr.version != 3) ||
+    if ((is_v4 && hdr.version != 4) ||
+        (is_v3 && hdr.version != 3) ||
         (is_v2 && hdr.version != 2) ||
         (is_v1 && hdr.version != 1)) {
         return false;
@@ -129,7 +150,12 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
 
     records.clear();
     lag_events.clear();
-    const bool has_event_lane = is_v2 || is_v3;
+    const bool has_event_lane = is_v2 || is_v3 || is_v4;
+    const bool has_predicted  = is_v4;
+    const std::size_t pred_count = has_predicted
+        ? static_cast<std::size_t>(hdr.num_players) *
+          static_cast<std::size_t>(hdr.num_players)
+        : 0;
     while (true) {
         // Peek for end-of-records sentinel: either "ENDR" (v1/v2)
         // or "LAGE" (v3 lag block) or "ENDR" (v3 with no lag block).
@@ -154,12 +180,18 @@ bool parse_replay(std::span<const std::uint8_t> bytes,
             rec.flags     = r.read_u8();
             rec.pred_diff = r.read_u8();
         }
+        if (has_predicted) {
+            rec.predicted.resize(pred_count);
+            for (std::size_t i = 0; i < pred_count; ++i) {
+                rec.predicted[i] = unpack_input(r);
+            }
+        }
         if (r.error()) return false;
         records.push_back(std::move(rec));
     }
 
     // Optional lag-event block (v3+).
-    if (is_v3 && r.remaining() >= 4 &&
+    if ((is_v3 || is_v4) && r.remaining() >= 4 &&
         bytes[r.pos()]     == 'L' && bytes[r.pos() + 1] == 'A' &&
         bytes[r.pos() + 2] == 'G' && bytes[r.pos() + 3] == 'E') {
         char lblock[4];

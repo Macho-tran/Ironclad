@@ -31,30 +31,24 @@
 //   Trailer is unchanged.
 //
 // === v3 ("IRCL_REPLAY3") — adds lag-comp event stream ===
-//   Header identical to v2 (including version byte = 3 written into
-//   the file's u16 version field).
-//   After the per-frame records but BEFORE the trailer, an extra
-//   block:
-//       u32 lag_event_count
-//       repeat lag_event_count times:
-//           u32 frame                 — sim frame the shot landed
-//           u8  attacker_id
-//           u8  target_id             — 0xFF if no hit
-//           u16 rewound_ticks         — rtt/2 in ticks
-//           i64 origin_x_raw          — Q32.32 raw bits
-//           i64 origin_y_raw
-//           i64 dir_x_raw
-//           i64 dir_y_raw
-//           i64 range_raw
-//   Trailer is the same "ENDR" + frame_count + final_hash as before.
+//   See above for the LagEvent block layout.
 //
-//   v3 captures lag-compensated hit-scan events so the Replay Studio
-//   can render rewound hitboxes when scrubbed near a shot frame.
+// === v4 ("IRCL_REPLAY4") — adds predicted-input matrix per record ===
+//   Identical to v3 except magic="IRCL_REPLAY4", version=4, and
+//   each per-frame record carries an extra trailing block:
+//       PlayerInput predicted[num_players * num_players]
+//   stored row-major as `predicted[observer*N + target]`. Each cell
+//   is 4 bytes (PlayerInput's wire size). For P=4 that's 64 B/frame
+//   on top of the v3 record, totally fine for studio-only use.
+//   Diagonal cells (observer == target) carry the local player's
+//   own input and are always equal to the canonical input; they
+//   are still written for layout simplicity.
+//   The lag-event block and trailer are unchanged.
 //
 // The recorder is intended to be wrapped *around* a Session: every
-// `tick`, the host calls `recorder.record_v2(...)` (or the legacy
-// `record(...)` which writes v3 records with zero rollback / flags
-// / pred_diff — still a valid v3 file). Lag events are added via
+// `tick`, the host calls `recorder.record_v3(...)` (or the legacy
+// `record(...)`/`record_v2(...)` which writes v4 records with zero
+// extras — still a valid v4 file). Lag events are added via
 // `record_lag_event(...)` and emitted at `finish()` time.
 #pragma once
 
@@ -115,6 +109,21 @@ public:
                    std::uint8_t  flags,
                    std::uint8_t  pred_diff);
 
+    /// Full v3 record: v2 fields plus the per-observer/per-target
+    /// predicted-input matrix. `predicted` is a flat row-major
+    /// array of length `num_players * num_players`, stored as
+    /// `predicted[observer * num_players + target]`. If `predicted`
+    /// is empty the recorder writes a zeroed matrix (which produces
+    /// "no recorded prediction" and the studio falls back to
+    /// canonical-only display).
+    void record_v3(std::uint32_t frame,
+                   std::span<const PlayerInput> per_player_inputs,
+                   std::uint64_t hash,
+                   std::uint8_t  rollback,
+                   std::uint8_t  flags,
+                   std::uint8_t  pred_diff,
+                   std::span<const PlayerInput> predicted);
+
     /// Append a lag-compensated hit-scan event. Buffered until
     /// `finish()` writes them all in one block before the trailer.
     void record_lag_event(const LagEvent& ev);
@@ -142,14 +151,18 @@ struct ReplayHeader {
     std::vector<std::uint8_t>  initial_snapshot;
 };
 
-/// Per-frame record. Fields beyond `hash` are zero for v1 inputs.
+/// Per-frame record. Fields beyond `hash` are zero for v1; v2/v3
+/// add the event lane; v4 adds the predicted-input matrix.
 struct ReplayRecord {
     std::uint32_t              frame      = 0;
     std::vector<PlayerInput>   inputs;
     std::uint64_t              hash       = 0;
-    std::uint8_t               rollback   = 0;     // v2 only
-    std::uint8_t               flags      = 0;     // v2 only; bit 0 = desync
-    std::uint8_t               pred_diff  = 0;     // v2 only
+    std::uint8_t               rollback   = 0;     // v2+
+    std::uint8_t               flags      = 0;     // v2+; bit 0 = desync
+    std::uint8_t               pred_diff  = 0;     // v2+
+    /// `predicted[observer * num_players + target]` — v4+. Empty
+    /// for older recordings.
+    std::vector<PlayerInput>   predicted;
     static constexpr std::uint8_t kFlagDesync = 1u << 0;
 };
 

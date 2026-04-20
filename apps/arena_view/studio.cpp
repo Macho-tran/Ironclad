@@ -439,8 +439,16 @@ void Studio::render_input_lanes(SDL_Renderer* r) {
         set_color(r, kDimGrey);
         fill_rect(r, origin_x, row_y, total_w, lane_h_per_player - 4);
 
+        // Each cell renders a 2-row ribbon when v4 prediction data is
+        // available: top half = canonical (what the sim actually
+        // applied), bottom half = the worst-mismatching peer's
+        // prediction for this player on this frame. When they
+        // differ, the cell is split visually so a reviewer can see
+        // exactly which frames+players had prediction errors.
+        const int top_h = (lane_h_per_player - 4) / 2;
+        const int bot_h = (lane_h_per_player - 4) - top_h;
         for (int j = -half; j <= half; ++j) {
-            const int rel = j + half;     // 0..lane_visible_frames_-1
+            const int rel = j + half;
             const std::int64_t f = static_cast<std::int64_t>(playhead_) + j;
             if (f < 0 || f >= static_cast<std::int64_t>(model_.record_count())) continue;
             const auto& rec = model_.records()[static_cast<std::size_t>(f)];
@@ -450,27 +458,50 @@ void Studio::render_input_lanes(SDL_Renderer* r) {
             const int cw = cell_w;
             const int ch = lane_h_per_player - 4;
 
-            // Movement-direction tint.
+            // ---- Top half: canonical input ------------------------
             Color tint = kDimGrey;
             if (in.move_x != 0 || in.move_y != 0) tint = col;
             set_color(r, tint);
-            fill_rect(r, cx + 1, cy + 1, cw - 1, ch - 2);
+            fill_rect(r, cx + 1, cy + 1, cw - 1, top_h - 1);
 
-            // Buttons: small accents.
             if (in.attack()) {
                 set_color(r, kHotPink);
-                fill_rect(r, cx + 1, cy + 1, cw - 1, 3);
+                fill_rect(r, cx + 1, cy + 1, cw - 1, 2);
             }
             if (in.dash()) {
                 set_color(r, kAmber);
-                fill_rect(r, cx + 1, cy + ch - 4, cw - 1, 3);
+                fill_rect(r, cx + 1, cy + top_h - 2, cw - 1, 2);
             }
 
-            // Predicted-vs-canonical mismatch flag for this player on
-            // this frame: small red corner ticks (pred_diff bit P).
-            if (rec.pred_diff & (1u << p)) {
+            // ---- Bottom half: predicted (worst-case across peers) -
+            // We pick the prediction cell that differed most from the
+            // canonical input — that's the most informative view of
+            // "how wrong was the prediction loop on this frame".
+            const std::size_t N = static_cast<std::size_t>(np);
+            ironclad::PlayerInput worst = in;     // start matching canonical
+            bool any_diff = false;
+            if (rec.predicted.size() == N * N) {
+                for (std::size_t obs = 0; obs < N; ++obs) {
+                    if (obs == p) continue;
+                    const auto& pred = rec.predicted[obs * N + p];
+                    if (pred != in) { worst = pred; any_diff = true; break; }
+                }
+            }
+            // Fallback for v1/v2/v3 (no matrix): use the pred_diff
+            // bitmask to colour the cell red but draw the same input.
+            if (!any_diff && (rec.pred_diff & (1u << p))) any_diff = true;
+
+            Color bot_tint = kDimGrey;
+            if (worst.move_x != 0 || worst.move_y != 0) {
+                bot_tint = any_diff ? Color{160, 32, 32} : col;
+            }
+            set_color(r, bot_tint);
+            fill_rect(r, cx + 1, cy + 1 + top_h, cw - 1, bot_h - 1);
+            if (any_diff) {
+                // Outline the cell in red so divergences are easy to
+                // scan even at very small cell widths.
                 set_color(r, kRed);
-                fill_rect(r, cx + cw - 3, cy + 1, 2, 2);
+                stroke_rect(r, cx, cy, cw, ch);
             }
         }
 

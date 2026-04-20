@@ -132,7 +132,7 @@ TEST_CASE("v2 round-trip: rollback / flags / pred_diff survive parse") {
     auto bytes = make_recording(60, 3);
     auto m = ReplayModel::load({bytes.data(), bytes.size()});
     REQUIRE(m.has_value());
-    CHECK(m->header().version     == 3);
+    CHECK(m->header().version     == 4);
     CHECK(m->header().num_players == 3);
     CHECK(m->record_count()       == 60u);
 
@@ -185,6 +185,54 @@ TEST_CASE("v1 magic file still parses (rollback lane = 0)") {
     }
 }
 
+TEST_CASE("v4 predicted-input matrix round-trips") {
+    constexpr std::uint8_t  nplayers = 3;
+    Recorder rec;
+    rec.begin(60, nplayers, 0xCAFE'F00DULL, 64, {});
+    std::vector<PlayerInput> applied(nplayers);
+    // Build a non-trivial predicted matrix per frame.
+    for (std::uint32_t f = 0; f < 5; ++f) {
+        for (std::uint8_t p = 0; p < nplayers; ++p) {
+            applied[p].move_x = static_cast<std::int8_t>(p * 10 + f);
+        }
+        std::vector<PlayerInput> predicted(
+            static_cast<std::size_t>(nplayers) * nplayers);
+        for (std::uint8_t obs = 0; obs < nplayers; ++obs) {
+            for (std::uint8_t tgt = 0; tgt < nplayers; ++tgt) {
+                std::size_t idx =
+                    static_cast<std::size_t>(obs) * nplayers + tgt;
+                PlayerInput& cell = predicted[idx];
+                if (obs == tgt) cell = applied[tgt];
+                else cell.move_x = static_cast<std::int8_t>(99 - tgt);
+            }
+        }
+        rec.record_v3(f, applied, 0xC0DE + f, 0, 0, 0,
+                      {predicted.data(), predicted.size()});
+    }
+    auto bytes = rec.finish(0);
+    auto m = ReplayModel::load({bytes.data(), bytes.size()});
+    REQUIRE(m.has_value());
+    CHECK(m->header().version == 4);
+    CHECK(m->record_count() == 5u);
+    for (std::uint32_t f = 0; f < 5; ++f) {
+        const auto& rec_in = m->records()[f];
+        REQUIRE(rec_in.predicted.size() ==
+                static_cast<std::size_t>(nplayers) * nplayers);
+        for (std::uint8_t obs = 0; obs < nplayers; ++obs) {
+            for (std::uint8_t tgt = 0; tgt < nplayers; ++tgt) {
+                std::size_t idx =
+                    static_cast<std::size_t>(obs) * nplayers + tgt;
+                const auto& cell = rec_in.predicted[idx];
+                if (obs == tgt) {
+                    CHECK(cell.move_x == static_cast<std::int8_t>(tgt * 10 + f));
+                } else {
+                    CHECK(cell.move_x == static_cast<std::int8_t>(99 - tgt));
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("v2 file (no lag block) still parses") {
     constexpr std::uint8_t  nplayers = 2;
     constexpr std::uint32_t frames   = 4;
@@ -229,7 +277,7 @@ TEST_CASE("v3 lag events round-trip and are discoverable via nearest_lag_event")
 
     auto m = ReplayModel::load({bytes.data(), bytes.size()});
     REQUIRE(m.has_value());
-    CHECK(m->header().version == 3);
+    CHECK(m->header().version == 4);
     REQUIRE(m->lag_events().size() == 2);
     CHECK(m->lag_events()[0].frame == 25);
     CHECK(m->lag_events()[0].target_id == 1);
@@ -316,8 +364,11 @@ TEST_CASE("validate_hash_chain finds tampered records") {
                               (static_cast<std::uint32_t>(bytes[33]) << 24);
     std::size_t records_start = hdr_fixed + init_size;
     constexpr std::uint8_t nplayers = 2;
-    constexpr std::size_t v2_record_size = 4 + 4u * nplayers + 8 + 3;
-    std::size_t target_record = records_start + 23u * v2_record_size;
+    // v4 record: 4 frame + 4*N inputs + 8 hash + 3 event-lane
+    //          + 4*N*N predicted-input matrix.
+    constexpr std::size_t v4_record_size =
+        4 + 4u * nplayers + 8 + 3 + 4u * nplayers * nplayers;
+    std::size_t target_record = records_start + 23u * v4_record_size;
     // Hash starts at offset (4 + 4*nplayers) inside the record.
     std::size_t hash_offset = target_record + 4 + 4u * nplayers;
     bytes[hash_offset] ^= 0xFFu;     // flip a byte
