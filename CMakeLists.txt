@@ -10,6 +10,7 @@ project(ironclad
 option(IRONCLAD_BUILD_TESTS    "Build ironclad unit tests" ON)
 option(IRONCLAD_BUILD_DEMO     "Build headless arena_demo" ON)
 option(IRONCLAD_BUILD_SDL_DEMO "Build SDL2 arena_view (requires libsdl2-dev)" OFF)
+option(IRONCLAD_USE_IMGUI      "Replay Studio uses ImGui for the control panel (FetchContent)" ON)
 option(IRONCLAD_SANITIZE       "Enable AddressSanitizer + UBSan" OFF)
 option(IRONCLAD_LTO            "Enable link-time optimization" OFF)
 option(IRONCLAD_WERROR         "Treat warnings as errors" ON)

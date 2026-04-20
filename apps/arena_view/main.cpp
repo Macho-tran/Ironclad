@@ -17,6 +17,12 @@
 // This binary is only compiled when `IRONCLAD_BUILD_SDL_DEMO=ON`.
 #include <SDL2/SDL.h>
 
+#if defined(IRONCLAD_HAS_IMGUI)
+#  include <imgui.h>
+#  include <imgui_impl_sdl2.h>
+#  include <imgui_impl_sdlrenderer2.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -226,6 +232,22 @@ int run_studio(const std::string& path,
     }
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
 
+#if defined(IRONCLAD_HAS_IMGUI)
+    // ImGui setup. We use a minimal context: ImGui draws the
+    // control panel (stats, scrub bar, buttons), the line-segment
+    // renderer keeps drawing the timeline, lanes, arena, inspector.
+    bool imgui_ok = false;
+    if (screenshot_path.empty()) {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui::StyleColorsDark();
+        if (ImGui_ImplSDL2_InitForSDLRenderer(win, ren) &&
+            ImGui_ImplSDLRenderer2_Init(ren)) {
+            imgui_ok = true;
+        }
+    }
+#endif
+
     arena_view::Studio studio(*m, arena_demo::init_arena, arena_demo::step_arena);
 
     if (!screenshot_path.empty()) {
@@ -262,14 +284,79 @@ int run_studio(const std::string& path,
     Uint64 last_ms = SDL_GetTicks64();
     while (!studio.wants_quit()) {
         SDL_Event ev;
-        while (SDL_PollEvent(&ev)) studio.handle_event(ev);
+        while (SDL_PollEvent(&ev)) {
+#if defined(IRONCLAD_HAS_IMGUI)
+            if (imgui_ok) ImGui_ImplSDL2_ProcessEvent(&ev);
+#endif
+            studio.handle_event(ev);
+        }
         const Uint64 now = SDL_GetTicks64();
         const double dt  = static_cast<double>(now - last_ms) / 1000.0;
         last_ms = now;
         studio.frame(ren, dt);
+#if defined(IRONCLAD_HAS_IMGUI)
+        if (imgui_ok) {
+            ImGui_ImplSDLRenderer2_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
+            // Floating control panel.
+            ImGui::SetNextWindowSize(ImVec2(360, 220), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowPos(ImVec2(900, 12),  ImGuiCond_FirstUseEver);
+            ImGui::Begin("Replay Studio");
+            std::uint32_t pf = studio.playhead();
+            const auto& stats = m->stats();
+            ImGui::Text("FRAME %u / %u", pf, m->record_count());
+            ImGui::Text("ROLLBACKS %u (max %u, avg %.2f)",
+                        stats.rollback_event_count,
+                        static_cast<unsigned>(stats.max_rollback_frames),
+                        stats.avg_rollback_frames);
+            ImGui::Text("LAG-COMP EVENTS %zu", m->lag_events().size());
+            ImGui::Text("DESYNCS %u", stats.desync_event_count);
+            ImGui::Separator();
+            int frame_i = static_cast<int>(pf);
+            if (ImGui::SliderInt("scrub", &frame_i, 0,
+                                 static_cast<int>(m->record_count()))) {
+                studio.seek(static_cast<std::uint32_t>(frame_i));
+            }
+            if (ImGui::Button("|<")) studio.seek(0);
+            ImGui::SameLine();
+            if (ImGui::Button("<")) studio.seek(pf > 0 ? pf - 1 : 0);
+            ImGui::SameLine();
+            if (ImGui::Button(">")) studio.seek(pf + 1);
+            ImGui::SameLine();
+            if (ImGui::Button(">|")) studio.seek(m->record_count());
+            ImGui::SameLine();
+            if (ImGui::Button("Rollback >")) {
+                auto i = m->next_event_index(pf + 1, true);
+                if (i < m->events().size())
+                    studio.seek(m->events()[i].frame);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Lag >")) {
+                const auto& levs = m->lag_events();
+                if (!levs.empty()) {
+                    std::uint32_t target = levs.front().frame;
+                    for (const auto& lev : levs) {
+                        if (lev.frame > pf) { target = lev.frame; break; }
+                    }
+                    studio.seek(target);
+                }
+            }
+            ImGui::End();
+            ImGui::Render();
+            ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
+        }
+#endif
         SDL_RenderPresent(ren);
     }
 
+#if defined(IRONCLAD_HAS_IMGUI)
+    if (imgui_ok) {
+        ImGui_ImplSDLRenderer2_Shutdown();
+        ImGui_ImplSDL2_Shutdown();
+        ImGui::DestroyContext();
+    }
+#endif
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
