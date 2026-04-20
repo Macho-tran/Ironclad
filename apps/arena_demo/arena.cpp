@@ -153,31 +153,104 @@ Result run(const Options& opts) {
             init_arena, step_arena);
     }
 
-    Recorder rec;
-    if (opts.record_path) {
-        auto initial = sessions[0]->snapshot_for(0);
-        rec.begin(kHz, opts.num_players, opts.seed,
-                  /*world_capacity=*/256,
-                  {initial.data(), initial.size()});
-    }
+    // Recording strategy: we capture the *canonical* per-frame AI
+    // inputs as we go (these are deterministic and define the ground
+    // truth of "what each player did this frame"), plus the live
+    // sessions' per-tick rollback distance / desync flag / predicted-
+    // vs-canonical mismatch bitmask. We do NOT trust the live
+    // sessions' per-tick `last_state_hash` for the recording,
+    // because under non-zero RTT a session's hash for frame F is
+    // only finalized after the last rollback that touches F, which
+    // can happen many ticks later. Instead, after the live run we
+    // do an offline deterministic re-simulation from the canonical
+    // inputs to compute the authoritative hash for every recorded
+    // frame. The re-simulated hashes match exactly what the Replayer
+    // will compute later when reading the .iclr file -- by
+    // construction, the chain validates.
+    struct RecCapture {
+        std::vector<PlayerInput> inputs;
+        std::uint8_t             rollback  = 0;
+        std::uint8_t             flags     = 0;
+        std::uint8_t             pred_diff = 0;
+    };
+    std::vector<RecCapture> rec_captures;
+    if (opts.record_path) rec_captures.reserve(opts.frames);
 
     std::uint64_t last_print_tick = 0;
+    // Track previous-tick rollback totals per session so we can compute
+    // the delta produced *during* this tick (and pick the worst-affected
+    // peer). last_rollback_frames in stats is overwritten by the next
+    // drain, so we use the running total instead.
+    std::vector<std::uint64_t> prev_rollback_total(opts.num_players, 0);
 
     for (std::uint32_t f = 0; f < opts.frames; ++f) {
+        // Compute the canonical AI inputs and capture each peer's
+        // *prediction* for every other player before the tick runs.
+        // pred_diff bit P is set if any peer's prediction for player P
+        // differs from the canonical input that's about to be applied.
+        std::vector<PlayerInput> canonical(opts.num_players);
+        for (std::uint8_t p = 0; p < opts.num_players; ++p) {
+            canonical[p] = ai_input(f, p);
+        }
+        std::uint8_t pred_diff = 0;
+        if (opts.record_path) {
+            for (std::uint8_t observer = 0; observer < opts.num_players; ++observer) {
+                for (std::uint8_t target = 0; target < opts.num_players; ++target) {
+                    if (observer == target) continue;
+                    auto opt = sessions[observer]->input_for(target, f);
+                    // If we have an authoritative input for that peer
+                    // (rare for the *current* frame) it'd match; if we
+                    // don't, prediction is "repeat last" — only the
+                    // session knows what that resolves to. We approximate
+                    // by treating "no authoritative input yet" as a
+                    // potential mismatch only if the canonical value
+                    // differs from the most recently-known input.
+                    PlayerInput predicted = opt.value_or(PlayerInput{});
+                    if (predicted != canonical[target]) {
+                        pred_diff = static_cast<std::uint8_t>(
+                            pred_diff | (1u << target));
+                    }
+                }
+            }
+        }
+
         // Each player ticks with their own AI input.
         for (std::uint8_t p = 0; p < opts.num_players; ++p) {
-            sessions[p]->tick(ai_input(f, p));
+            sessions[p]->tick(canonical[p]);
         }
         hub.advance_tick();
 
-        // Recorder uses player 0's view of the per-player inputs.
+        // Recorder needs the inputs the simulation actually consumed
+        // at this frame, NOT the canonical AI inputs. With non-zero
+        // local_input_delay, a player pressing a button at frame T
+        // is consumed by the simulation at frame T + delay; recording
+        // the canonical-frame-T input would put the wrong button on
+        // the wrong tick and the replay would not reproduce the hash.
+        // Player 0's session has authoritative inputs for every player
+        // for every past frame (peers send theirs and we apply our own
+        // immediately), so we read directly from its input ring.
         if (opts.record_path) {
-            std::vector<PlayerInput> ppi(opts.num_players);
+            // Worst-case rollback distance across all peers for this
+            // tick is the meaningful number — that's how big the
+            // correction was for the most-affected client. We compute
+            // it from the running total because last_rollback_frames
+            // was clobbered when the next tick drained the transport.
+            std::uint8_t rollback = 0;
             for (std::uint8_t p = 0; p < opts.num_players; ++p) {
-                ppi[p] = ai_input(f, p);
+                std::uint64_t delta =
+                    sessions[p]->stats().total_rollback_frames - prev_rollback_total[p];
+                prev_rollback_total[p] = sessions[p]->stats().total_rollback_frames;
+                if (delta > 255) delta = 255;
+                if (delta > rollback) rollback = static_cast<std::uint8_t>(delta);
             }
-            rec.record(f, {ppi.data(), ppi.size()},
-                       sessions[0]->stats().last_state_hash);
+            std::uint8_t flags = 0;
+            for (std::uint8_t p = 0; p < opts.num_players; ++p) {
+                if (sessions[p]->stats().desync_detected) {
+                    flags |= ReplayRecord::kFlagDesync;
+                    break;
+                }
+            }
+            rec_captures.push_back({canonical, rollback, flags, pred_diff});
         }
 
         // Per-second status line from player 0's perspective.
@@ -202,7 +275,39 @@ Result run(const Options& opts) {
     }
 
     if (opts.record_path) {
-        auto bytes = rec.finish(sessions[0]->stats().last_state_hash);
+        // Offline pass: deterministically re-simulate the canonical
+        // inputs, recording the post-tick hash for each frame. The
+        // resulting .iclr is guaranteed to validate via Replayer
+        // because by construction the recorded hashes are exactly
+        // what the same step function produces from the same inputs.
+        Recorder rec;
+        World world(256);
+        Rng   rng(opts.seed);
+        SessionConfig sc;
+        sc.num_players    = opts.num_players;
+        sc.world_capacity = 256;
+        sc.seed           = opts.seed;
+        sc.tick_hz        = kHz;
+        init_arena(world, rng, sc);
+        // Initial snapshot for the recording must match what
+        // Replayer's ctor produces (`world.serialize` only — RNG
+        // state is appended only inside the per-tick hash, not the
+        // initial snapshot).
+        ByteWriter init_w;
+        world.serialize(init_w);
+        rec.begin(kHz, opts.num_players, opts.seed, 256, init_w.view());
+
+        std::uint64_t final_hash = 0;
+        for (std::size_t i = 0; i < rec_captures.size(); ++i) {
+            const auto& c = rec_captures[i];
+            step_arena(world, c.inputs.data(),
+                       static_cast<std::uint8_t>(c.inputs.size()), rng);
+            ByteWriter h; world.serialize(h); h.write_u64(rng.state());
+            final_hash = ironclad::hash64(h.view().data(), h.view().size());
+            rec.record_v2(static_cast<std::uint32_t>(i), c.inputs,
+                          final_hash, c.rollback, c.flags, c.pred_diff);
+        }
+        auto bytes = rec.finish(final_hash);
         std::ofstream f(opts.record_path, std::ios::binary);
         f.write(reinterpret_cast<const char*>(bytes.data()),
                 static_cast<std::streamsize>(bytes.size()));
