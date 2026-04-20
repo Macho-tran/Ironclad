@@ -6,6 +6,8 @@ endif()
 
 add_executable(arena_view
     main.cpp
+    render.cpp
+    studio.cpp
     ../arena_demo/arena.cpp
 )
 target_include_directories(arena_view PRIVATE ${CMAKE_SOURCE_DIR}/apps)
