@@ -37,6 +37,15 @@ ironclad_add_test(test_recorder)
 ironclad_add_test(test_desync)
 ironclad_add_test(test_replay_model)
 
+# UDP transport: tagged "network" so sandboxed CI can opt out.
+add_executable(test_udp_transport test_udp_transport.cpp doctest_main.cpp)
+target_link_libraries(test_udp_transport PRIVATE ironclad ironclad_doctest Threads::Threads)
+ironclad_apply_warnings(test_udp_transport)
+add_test(NAME test_udp_transport COMMAND test_udp_transport)
+set_tests_properties(test_udp_transport PROPERTIES
+    TIMEOUT 60
+    LABELS  "network")
+
 # Soak smoke: 60s, 4 AI clients, simulated 150ms RTT / 5% loss / 30ms
 # jitter / 2% reorder. Asserts 0 desyncs + bounded rollback + bandwidth
 # under the KPI cap. Tagged "soak" so CI can run it as a separate step.

@@ -41,6 +41,21 @@ Session::Session(SessionConfig    config,
     // determines snapshot byte layout).
     world_init(world_, rng_, config_);
 
+    // Pre-fill the input-delay window for the local player with
+    // valid empty inputs. Without this, slots [0..delay-1] of the
+    // local player are never written (the first `tick(input)` call
+    // writes slot `delay`), and `fully_acked()` reports false for
+    // those frames forever — which in turn prevents honest cross-
+    // attestation of early-game state hashes.
+    for (std::uint8_t f = 0; f < config_.local_input_delay; ++f) {
+        inputs_[config_.local_player][input_idx(f)]      = PlayerInput{};
+        input_valid_[config_.local_player][input_idx(f)] = 1;
+    }
+    if (config_.local_input_delay > 0) {
+        last_known_input_frame_[config_.local_player] =
+            static_cast<std::uint32_t>(config_.local_input_delay - 1);
+    }
+
     // Snapshot frame 0 (the initial state) so rollback can reach it.
     save_snapshot(0);
     stats_.current_frame  = 0;
@@ -167,40 +182,32 @@ std::uint32_t Session::process_remote_input(std::uint8_t player,
 
 void Session::drain_transport() {
     std::uint32_t rollback_to = ~std::uint32_t{0};
+    // Collect peer attestations from this drain pass; we evaluate
+    // them only AFTER any rollback has updated our snapshots, so a
+    // packet that simultaneously delivers corrective input and the
+    // peer's hash can't false-positive (we'd otherwise compare the
+    // peer's post-correction hash against our stale prediction).
+    struct PeerAttest { std::uint32_t ack_frame; std::uint64_t ack_hash; };
+    std::vector<PeerAttest> attestations;
+
     while (auto pkt = transport_->recv()) {
         ByteReader r(pkt->bytes.data(), pkt->bytes.size());
         InputPacket ip;
         if (!read_input_packet(r, ip)) continue;
         if (ip.sender != pkt->from_player) continue;       // sanity
         if (ip.sender >= config_.num_players) continue;
-        // Newest input is at index `count - 1`, frame `ip.frame`.
         for (std::uint8_t i = 0; i < ip.count; ++i) {
             const std::uint32_t f = ip.frame + 1u - ip.count + i;
             const std::uint32_t r_to =
                 process_remote_input(ip.sender, f, ip.inputs[i]);
             if (r_to < rollback_to) rollback_to = r_to;
         }
-        // Desync detection: if peer reports a state hash for a frame
-        // we've already produced, compare it to our own.
-        if (ip.ack_frame > 0 && ip.ack_frame <= frame_) {
-            const Snapshot* mine = snapshots_.get(ip.ack_frame);
-            if (mine && mine->hash != ip.ack_hash) {
-                stats_.desync_detected     = true;
-                stats_.desync_frame        = ip.ack_frame;
-                stats_.desync_local_hash   = mine->hash;
-                stats_.desync_remote_hash  = ip.ack_hash;
-            }
-        }
-        // Track the latest peer hash we've now verified, for future
-        // outbound packets.
-        if (ip.ack_frame >= ack_frame_) {
-            ack_frame_ = ip.ack_frame;
-            ack_hash_  = ip.ack_hash;
+        if (ip.ack_frame > 0) {
+            attestations.push_back({ip.ack_frame, ip.ack_hash});
         }
     }
 
     if (rollback_to != ~std::uint32_t{0}) {
-        // Restore world to the snapshot taken *before* the divergent frame.
         if (load_snapshot(rollback_to)) {
             const std::uint32_t old_frame = frame_;
             for (std::uint32_t f = rollback_to; f < old_frame; ++f) {
@@ -215,14 +222,46 @@ void Session::drain_transport() {
     } else {
         stats_.last_rollback_frames = 0;
     }
+
+    // Now that any corrective rollback has executed, evaluate the
+    // peer attestations. We only act on attestations for frames we
+    // ourselves have fully acked from every peer — otherwise our
+    // snapshot is still mutable and a comparison is a race.
+    for (const auto& a : attestations) {
+        if (a.ack_frame > frame_) continue;
+        if (!fully_acked(a.ack_frame - 1)) continue;
+        const Snapshot* mine = snapshots_.get(a.ack_frame);
+        if (mine && mine->hash != a.ack_hash) {
+            stats_.desync_detected     = true;
+            stats_.desync_frame        = a.ack_frame;
+            stats_.desync_local_hash   = mine->hash;
+            stats_.desync_remote_hash  = a.ack_hash;
+        }
+    }
 }
 
 void Session::broadcast_input_packet() {
     InputPacket ip;
     ip.sender    = config_.local_player;
     ip.frame     = frame_ - 1;     // most recent fully-stepped frame
-    ip.ack_frame = ack_frame_;
-    ip.ack_hash  = ack_hash_;
+    // Attest to our own state hash for the most recent frame that
+    // is BOTH fully acked AND old enough that no in-flight packet
+    // could still trigger a rollback through it.
+    constexpr std::uint32_t kDesyncMargin = 30;     // ~0.5s @ 60Hz
+    ip.ack_frame = 0;
+    ip.ack_hash  = 0;
+    const std::uint32_t cap = frame_ > kDesyncMargin
+        ? frame_ - kDesyncMargin : 0;
+    if (cap > 0) {
+        for (std::uint32_t f = cap; f-- > 0;) {
+            if (!fully_acked(f)) continue;
+            const Snapshot* s = snapshots_.get(f + 1);
+            if (!s) continue;
+            ip.ack_frame = f + 1;
+            ip.ack_hash  = s->hash;
+            break;
+        }
+    }
     const std::uint8_t want = std::min<std::uint8_t>(InputPacket::kMaxInputs,
         static_cast<std::uint8_t>(std::min<std::uint32_t>(frame_, 255u)));
     ip.count = want;

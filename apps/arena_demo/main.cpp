@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "arena.hpp"
+#include "arena_udp.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -104,14 +105,18 @@ bool parse_u64(const char* s, std::uint64_t& out) {
 void usage() {
     std::fprintf(stderr,
         "arena_demo - headless ironclad rollback netcode demo\n"
-        "Usage:\n"
-        "  arena_demo [--frames N] [--players P]\n"
-        "             [--rtt-ms M] [--jitter-ms J]\n"
-        "             [--loss-pct L] [--reorder-pct R]\n"
-        "             [--seed 0xC0FFEE] [--record PATH] [--quiet]\n"
-        "  arena_demo --replay-info PATH\n"
-        "      print a summary of an .iclr recording (and validate the\n"
-        "      hash chain by deterministically re-simulating it).\n"
+        "Modes:\n"
+        "  In-process simulator (default):\n"
+        "    arena_demo [--frames N] [--players P]\n"
+        "               [--rtt-ms M] [--jitter-ms J]\n"
+        "               [--loss-pct L] [--reorder-pct R]\n"
+        "               [--seed 0xC0FFEE] [--record PATH] [--quiet]\n"
+        "  Replay inspector:\n"
+        "    arena_demo --replay-info PATH\n"
+        "  Real UDP between two (or more) processes:\n"
+        "    arena_demo --net listen  --port 7777 --players 2 --my-id 0\n"
+        "    arena_demo --net connect --remote 127.0.0.1:7777 --port 7778\n"
+        "               --players 2 --my-id 1\n"
         "Defaults: frames=3600 players=4 rtt-ms=0 jitter-ms=0 loss-pct=0 reorder-pct=0\n");
 }
 
@@ -127,6 +132,36 @@ int main(int argc, char** argv) {
                 return 2;
             }
             return print_replay_info(argv[i + 1]);
+        }
+    }
+
+    // Special-case the UDP modes — they have their own options namespace
+    // and don't share the netsim flags.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--net") {
+            arena_demo::UdpOptions u;
+            if (i + 1 >= argc) { std::fprintf(stderr, "--net needs listen|connect\n"); return 2; }
+            std::string role = argv[i + 1];
+            if      (role == "listen")  u.role = arena_demo::UdpOptions::Role::Listen;
+            else if (role == "connect") u.role = arena_demo::UdpOptions::Role::Connect;
+            else { std::fprintf(stderr, "--net role must be listen|connect\n"); return 2; }
+            for (int j = i + 2; j < argc; ++j) {
+                std::string a = argv[j];
+                auto need = [&](const char* opt) -> const char* {
+                    if (++j >= argc) { std::fprintf(stderr, "%s needs arg\n", opt); std::exit(2); }
+                    return argv[j];
+                };
+                if      (a == "--port")    { u.bind_port = static_cast<std::uint16_t>(std::atoi(need("--port"))); }
+                else if (a == "--remote")  { u.remotes.push_back(need("--remote")); }
+                else if (a == "--players") { u.num_players = static_cast<std::uint8_t>(std::atoi(need("--players"))); }
+                else if (a == "--my-id")   { u.my_id       = static_cast<std::uint8_t>(std::atoi(need("--my-id"))); }
+                else if (a == "--frames")  { u.frames      = static_cast<std::uint32_t>(std::atoi(need("--frames"))); }
+                else if (a == "--seed")    { u.seed        = std::strtoull(need("--seed"), nullptr, 0); }
+                else if (a == "--record")  { u.record_path = need("--record"); }
+                else if (a == "--quiet")   { u.quiet = true; }
+                else { std::fprintf(stderr, "unknown --net arg: %s\n", a.c_str()); return 2; }
+            }
+            return arena_demo::run_udp(u);
         }
     }
 

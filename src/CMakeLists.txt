@@ -8,7 +8,11 @@ add_library(ironclad STATIC
     recorder.cpp
     desync.cpp
     replay.cpp
+    udp_transport.cpp
 )
+if(WIN32)
+    target_link_libraries(ironclad PUBLIC ws2_32)
+endif()
 
 target_include_directories(ironclad
     PUBLIC

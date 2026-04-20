@@ -138,8 +138,10 @@ private:
     /// is in our ring, per player. We use this to produce predictions.
     std::vector<std::uint32_t>             last_known_input_frame_;
     /// Most recently verified peer hash + frame (used in InputPackets).
-    std::uint32_t                          ack_frame_ = 0;
-    std::uint64_t                          ack_hash_  = 0;
+    // (Reserved — formerly used to bounce-back peer-attested hashes.
+    // The wire protocol now puts the sender's own hash in
+    // InputPacket::ack_{frame,hash}, so we no longer need to
+    // remember the peer's value across packets.)
     SessionStats                           stats_{};
 };
 

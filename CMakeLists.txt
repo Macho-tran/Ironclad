@@ -31,6 +31,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(cmake/Warnings.cmake)
 include(cmake/Sanitizers.cmake)
 
+# Threads — needed by UDP test (and by anything pulling in <thread>).
+find_package(Threads REQUIRED)
+
 if(IRONCLAD_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_err)
